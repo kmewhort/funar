@@ -18,6 +18,7 @@ import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.OutputConfiguration;
+import android.hardware.camera2.params.SessionConfiguration;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.Image;
 import android.media.ImageReader;
@@ -192,7 +193,7 @@ public class CameraController extends AppCompatActivity {
 
             // request builder to which to add the surfaces we're requesting
             CaptureRequest.Builder requestBuilder =
-                    cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD); // TODO: is template preview right?
+                    cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD); // TODO: is template record right?
 
             // for each of the two physical devices
             for (int i = 0; i < 2; i++) {
@@ -210,8 +211,8 @@ public class CameraController extends AppCompatActivity {
                 ImageReader.OnImageAvailableListener readerListener = new ImageReader.OnImageAvailableListener() {
                     @Override
                     public void onImageAvailable(ImageReader reader) {
-                        // for each physical camera
-                        for (int i = 0; i < 2; i++) {
+                        // TODO - not getting second acquire; for each physical camera
+                        for (int i = 0; i < 1; i++) {
                             Image img = null;
                             try {
                                 img = reader.acquireLatestImage();
@@ -235,7 +236,7 @@ public class CameraController extends AppCompatActivity {
                                 rc.set(0, 0, rgbMat.width(), rgbMat.height());
                                 c.drawBitmap(imgBitmap, 0, 0, null);
                                 textureView.unlockCanvasAndPost(c);
-                                Thread.sleep(10000);
+                                Thread.sleep(3000);
                             } catch (InterruptedException e) {
                                 e.printStackTrace();
                             } finally {
@@ -259,7 +260,8 @@ public class CameraController extends AppCompatActivity {
                     }
                 };
 
-                // TODO: shouldn't need two listeners?
+                // TODO: shouldn't need two listeners...should be able to get rid of above listeners
+                // and just use the capture listeners
                 reader.setOnImageAvailableListener(readerListener, mBackgroundHandler);
 
                 physicalImageReaders.add(reader);
@@ -271,11 +273,11 @@ public class CameraController extends AppCompatActivity {
             } // end for each physical device
 
 
-            // TODO: why do I need a capture listener (already set the image listener?)
             final CameraCaptureSession.CaptureCallback captureListener = new CameraCaptureSession.CaptureCallback() {
                 @Override
                 public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
                     super.onCaptureCompleted(session, request, result);
+                    /* TODO
                     Toast.makeText(CameraController.this, "Saved:" + file, Toast.LENGTH_SHORT).show();
                     try {
                         Thread.sleep(3000);
@@ -283,10 +285,11 @@ public class CameraController extends AppCompatActivity {
                     } finally {
                         createCameraPreview();
                     }
+                    */
                 }
             };
 
-            cameraDevice.createCaptureSession(surfaces, new CameraCaptureSession.StateCallback() {
+            final CameraCaptureSession.StateCallback stateListener = new CameraCaptureSession.StateCallback() {
                 @Override
                 public void onConfigured(CameraCaptureSession session) {
                     try {
@@ -299,7 +302,19 @@ public class CameraController extends AppCompatActivity {
                 @Override
                 public void onConfigureFailed(CameraCaptureSession session) {
                 }
-            }, mBackgroundHandler);
+            };
+
+            // TEMP: trying this instead of request builder
+            SessionConfiguration sessionConfig = new SessionConfiguration(
+                    SessionConfiguration.SESSION_REGULAR,
+                    outputConfigs,
+                    textureView.getContext().getMainExecutor(), // TODO: create a background executor (and remove background handler)
+                    stateListener);
+            cameraDevice.createCaptureSession(sessionConfig);
+
+            /*
+            cameraDevice.createCaptureSession(surfaces, stateListener, mBackgroundHandler);
+             */
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
@@ -307,6 +322,8 @@ public class CameraController extends AppCompatActivity {
 
 
     protected void createCameraPreview() {
+        // TODO
+        /*
         try {
             SurfaceTexture texture = textureView.getSurfaceTexture();
             assert texture != null;
@@ -338,6 +355,7 @@ public class CameraController extends AppCompatActivity {
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
+         */
     }
 
     private void openCamera() {
