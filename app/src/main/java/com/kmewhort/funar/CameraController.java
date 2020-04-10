@@ -100,14 +100,6 @@ public class CameraController extends AppCompatActivity {
         textureView = (TextureView) findViewById(R.id.texture);
         assert textureView != null;
         textureView.setSurfaceTextureListener(textureListener);
-        takePictureButton = (Button) findViewById(R.id.btn_takepicture);
-        assert takePictureButton != null;
-        takePictureButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                takePicture();
-            }
-        });
     }
 
     TextureView.SurfaceTextureListener textureListener = new TextureView.SurfaceTextureListener() {
@@ -138,7 +130,7 @@ public class CameraController extends AppCompatActivity {
             //This is called when the camera is open
             Log.e(TAG, "onOpened");
             cameraDevice = camera;
-            createCameraPreview();
+            startTakingPictures();
         }
 
         @Override
@@ -150,15 +142,6 @@ public class CameraController extends AppCompatActivity {
         public void onError(CameraDevice camera, int error) {
             cameraDevice.close();
             cameraDevice = null;
-        }
-    };
-
-    final CameraCaptureSession.CaptureCallback captureCallbackListener = new CameraCaptureSession.CaptureCallback() {
-        @Override
-        public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
-            super.onCaptureCompleted(session, request, result);
-            Toast.makeText(CameraController.this, "Saved:" + file, Toast.LENGTH_SHORT).show();
-            createCameraPreview();
         }
     };
 
@@ -179,7 +162,7 @@ public class CameraController extends AppCompatActivity {
         }
     }
 
-    protected void takePicture() {
+    protected void startTakingPictures() {
         if (null == cameraDevice) {
             Log.e(TAG, "cameraDevice is null");
             return;
@@ -198,6 +181,7 @@ public class CameraController extends AppCompatActivity {
             // request builder to which to add the surfaces we're requesting
             CaptureRequest.Builder requestBuilder =
                     cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE); // TODO: is template record right?
+            requestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
 
             // for each of the two physical devices
             for (int i = 0; i < 2; i++) {
@@ -215,53 +199,28 @@ public class CameraController extends AppCompatActivity {
                 ImageReader.OnImageAvailableListener readerListener = new ImageReader.OnImageAvailableListener() {
                     @Override
                     public void onImageAvailable(ImageReader reader) {
-                        // TODO - not getting second acquire; for each physical camera
-                        for (int i = 0; i < 1; i++) {
-                            Image img = null;
-                            try {
-                                img = reader.acquireLatestImage();
-
-
-                                Bitmap imgBitmap = mStereoImageProcessor.YUV_420_888_toRGB(
-                                        img, imageDimension.getWidth(), imageDimension.getHeight()
-                                );
-                                //img.close();
-
-                                // save the image
-//                                File file = new File(Environment.getExternalStorageDirectory() + "/pic" + i + ".jpg");
-//                                ByteBuffer buffer = img.getPlanes()[0].getBuffer();
-//                                byte[] bytes = new byte[buffer.capacity()];
-//                                buffer.get(bytes);
- //                               save(bytes);
-
-                                // convert OpenCV matrix to bitmap
-                                //Bitmap imgBitmap = Bitmap.createBitmap(rgbMat.width(), rgbMat.height(), Bitmap.Config.ARGB_8888);
-                                //Utils.matToBitmap(rgbMat, imgBitmap);
-
-                                Rect rc = new Rect();
-                                Canvas c = textureView.lockCanvas(rc);
-                                rc.set(0, 0, imageDimension.getWidth(), imageDimension.getHeight());
-                                c.drawBitmap(imgBitmap, 0, 0, null);
-                                textureView.unlockCanvasAndPost(c);
-                                Thread.sleep(3000);
-                            } catch (InterruptedException e) {
-                                e.printStackTrace();
-                            } finally {
-                                if (img != null) {
-                                    img.close();
-                                }
-                            }
-                        }
-                    }
-
-                    private void save(byte[] bytes) throws IOException {
-                        OutputStream output = null;
+                        Image img = null;
                         try {
-                            output = new FileOutputStream(file);
-                            output.write(bytes);
+                            img = reader.acquireLatestImage();
+                            if(img == null) // not sure why this happens
+                                return;
+
+                            Bitmap imgBitmap = mStereoImageProcessor.YUV_420_888_toRGB(
+                                    img, imageDimension.getWidth(), imageDimension.getHeight()
+                            );
+
+                            // convert OpenCV matrix to bitmap
+                            //Bitmap imgBitmap = Bitmap.createBitmap(rgbMat.width(), rgbMat.height(), Bitmap.Config.ARGB_8888);
+                            //Utils.matToBitmap(rgbMat, imgBitmap);
+
+                            Rect rc = new Rect();
+                            Canvas c = textureView.lockCanvas(rc);
+                            rc.set(0, 0, imageDimension.getWidth(), imageDimension.getHeight());
+                            c.drawBitmap(imgBitmap, 0, 0, null);
+                            textureView.unlockCanvasAndPost(c);
                         } finally {
-                            if (null != output) {
-                                output.close();
+                            if (img != null) {
+                                img.close();
                             }
                         }
                     }
@@ -282,15 +241,6 @@ public class CameraController extends AppCompatActivity {
                 @Override
                 public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
                     super.onCaptureCompleted(session, request, result);
-                    /* TODO
-                    Toast.makeText(CameraController.this, "Saved:" + file, Toast.LENGTH_SHORT).show();
-                    try {
-                        Thread.sleep(3000);
-                    } catch (InterruptedException e) {
-                    } finally {
-                        createCameraPreview();
-                    }
-                    */
                 }
             };
 
@@ -298,7 +248,8 @@ public class CameraController extends AppCompatActivity {
                 @Override
                 public void onConfigured(CameraCaptureSession session) {
                     try {
-                        session.capture(requestBuilder.build(), captureListener, mBackgroundHandler);
+                        //session.capture(requestBuilder.build(), captureListener, mBackgroundHandler);
+                        session.setRepeatingRequest(requestBuilder.build(), captureListener, mBackgroundHandler);
                     } catch (CameraAccessException e) {
                         e.printStackTrace();
                     }
@@ -320,44 +271,6 @@ public class CameraController extends AppCompatActivity {
         }
     }
 
-
-    protected void createCameraPreview() {
-        // TODO
-        /*
-        try {
-            SurfaceTexture texture = textureView.getSurfaceTexture();
-            assert texture != null;
-            texture.setDefaultBufferSize(imageDimension.getWidth(), imageDimension.getHeight());
-            Surface surface = new Surface(texture);
-            captureRequestBuilder = cameraDevice.createCaptureRequest(
-                    CameraDevice.TEMPLATE_PREVIEW//,
-                    // TEST: just the first
-                    //new HashSet<>(Arrays.asList(mCameraSelector.physicalCameraId(0)))
-            );
-            captureRequestBuilder.addTarget(surface);
-            cameraDevice.createCaptureSession(Arrays.asList(surface), new CameraCaptureSession.StateCallback() {
-                @Override
-                public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
-                    //The camera is already closed
-                    if (null == cameraDevice) {
-                        return;
-                    }
-                    // When the session is ready, we start displaying the preview.
-                    cameraCaptureSessions = cameraCaptureSession;
-                    updatePreview();
-                }
-
-                @Override
-                public void onConfigureFailed(@NonNull CameraCaptureSession cameraCaptureSession) {
-                    Toast.makeText(CameraController.this, "Configuration change", Toast.LENGTH_SHORT).show();
-                }
-            }, null);
-        } catch (CameraAccessException e) {
-            e.printStackTrace();
-        }
-         */
-    }
-
     private void openCamera() {
         CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
         Log.e(TAG, "is camera open");
@@ -377,22 +290,6 @@ public class CameraController extends AppCompatActivity {
             e.printStackTrace();
         }
         Log.e(TAG, "openCamera X");
-    }
-
-    protected void updatePreview() {
-        // remove preview so we can show our take photo:
-        // TODO
-        /*
-        if (null == cameraDevice) {
-            Log.e(TAG, "updatePreview error, return");
-        }
-        captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
-        try {
-            cameraCaptureSessions.setRepeatingRequest(captureRequestBuilder.build(), null, mBackgroundHandler);
-        } catch (CameraAccessException e) {
-            e.printStackTrace();
-        }
-        */
     }
 
     private void closeCamera() {
