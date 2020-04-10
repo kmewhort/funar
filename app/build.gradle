@@ -5,13 +5,13 @@ android {
     buildToolsVersion "29.0.3"
     defaultConfig {
         applicationId "com.kmewhort.funar"
-        minSdkVersion 29
+        minSdkVersion 24 // needs to match renderscriptTargetApi due to https://stackoverflow.com/questions/31843272/set-up-renderscript-in-android-studio
         targetSdkVersion 29
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        renderscriptTargetApi 18
-        renderscriptSupportModeEnabled true
+        renderscriptTargetApi 24
+        renderscriptSupportModeEnabled false
     }
     buildTypes {
         release {

@@ -6,7 +6,7 @@
 6
 7    <uses-sdk
 7-->/Users/kent/AndroidStudioProjects/Funar/openCVLibrary343/src/main/AndroidManifest.xml:7:5-47
-8        android:minSdkVersion="29"
+8        android:minSdkVersion="24"
 8-->/Users/kent/AndroidStudioProjects/Funar/openCVLibrary343/src/main/AndroidManifest.xml:7:5-47
 9        android:targetSdkVersion="29" />
 9-->/Users/kent/AndroidStudioProjects/Funar/openCVLibrary343/src/main/AndroidManifest.xml:7:15-44

@@ -1,51 +1,87 @@
 package com.kmewhort.funar;
 
+import android.content.Context;
+import android.graphics.Bitmap;
 import android.media.Image;
 import android.util.Log;
 
-import org.opencv.core.Mat;
-import org.opencv.imgproc.Imgproc;
-
 import java.nio.ByteBuffer;
 
-import static org.opencv.core.CvType.CV_8UC1;
-import static org.opencv.imgproc.Imgproc.cvtColor;
+import android.renderscript.*;
+
+import com.kmewhort.funar.ScriptC_yuv420888;
 
 public class StereoImageProcessor {
-    private static final String TAG = "StereoImageProcessor";
-    public static Mat Yuv420888toRGB(Image image) {
-        Mat rgb = null;
-        try {
-            // from https://stackoverflow.com/questions/30510928/convert-android-camera2-api-yuv-420-888-to-rgb
-            // NOTE: fastest method, but only works when underlying buffers are nv21
-            byte[] nv21;
-            ByteBuffer yBuffer = image.getPlanes()[0].getBuffer();
-            ByteBuffer uBuffer = image.getPlanes()[1].getBuffer();
-            ByteBuffer vBuffer = image.getPlanes()[2].getBuffer();
+    private RenderScript rs;
 
-            int ySize = yBuffer.remaining();
-            int uSize = uBuffer.remaining();
-            int vSize = vBuffer.remaining();
-
-            nv21 = new byte[ySize + uSize + vSize];
-
-            //U and V are swapped
-            yBuffer.get(nv21, 0, ySize);
-            vBuffer.get(nv21, ySize, vSize);
-            uBuffer.get(nv21, ySize + vSize, uSize);
-
-            rgb = getYUV2Mat(image, nv21);
-        } catch (Exception e) {
-            Log.w(TAG, e.getMessage());
-        }
-        return rgb;
+    public StereoImageProcessor(Context ctx) {
+        rs = RenderScript.create(ctx);
     }
 
-    private static Mat getYUV2Mat(Image image, byte[] data) {
-        Mat mYuv = new Mat(image.getHeight() + image.getHeight() / 2, image.getWidth(), CV_8UC1);
-        mYuv.put(0, 0, data);
-        Mat mRGB = new Mat();
-        cvtColor(mYuv, mRGB, Imgproc.COLOR_YUV2RGB_NV21, 3);
-        return mRGB;
+    // adapted from https://stackoverflow.com/questions/36212904/yuv-420-888-interpretation-on-samsung-galaxy-s7-camera2
+    public Bitmap YUV_420_888_toRGB(Image image, int width, int height){
+        // Get the three image planes
+        Image.Plane[] planes = image.getPlanes();
+        ByteBuffer buffer = planes[0].getBuffer();
+        byte[] y = new byte[buffer.remaining()];
+        buffer.get(y);
+
+        buffer = planes[1].getBuffer();
+        byte[] u = new byte[buffer.remaining()];
+        buffer.get(u);
+
+        buffer = planes[2].getBuffer();
+        byte[] v = new byte[buffer.remaining()];
+        buffer.get(v);
+
+        // get the relevant RowStrides and PixelStrides
+        // (we know from documentation that PixelStride is 1 for y)
+        int yRowStride= planes[0].getRowStride();
+        int uvRowStride= planes[1].getRowStride();  // we know from   documentation that RowStride is the same for u and v.
+        int uvPixelStride= planes[1].getPixelStride();  // we know from   documentation that PixelStride is the same for u and v.
+
+
+        // rs creation just for demo. Create rs just once in onCreate and use it again.
+
+        ScriptC_yuv420888 mYuv420=new ScriptC_yuv420888(rs);
+
+        // Y,U,V are defined as global allocations, the out-Allocation is the Bitmap.
+        // Note also that uAlloc and vAlloc are 1-dimensional while yAlloc is 2-dimensional.
+        Type.Builder typeUcharY = new Type.Builder(rs, Element.U8(rs));
+        typeUcharY.setX(yRowStride).setY(height);
+        Allocation yAlloc = Allocation.createTyped(rs, typeUcharY.create());
+        yAlloc.copyFrom(y);
+        mYuv420.set_ypsIn(yAlloc);
+
+        Type.Builder typeUcharUV = new Type.Builder(rs, Element.U8(rs));
+        // note that the size of the u's and v's are as follows:
+        //      (  (width/2)*PixelStride + padding  ) * (height/2)
+        // =    (RowStride                          ) * (height/2)
+        // but I noted that on the S7 it is 1 less...
+        typeUcharUV.setX(u.length);
+        Allocation uAlloc = Allocation.createTyped(rs, typeUcharUV.create());
+        uAlloc.copyFrom(u);
+        mYuv420.set_uIn(uAlloc);
+
+        Allocation vAlloc = Allocation.createTyped(rs, typeUcharUV.create());
+        vAlloc.copyFrom(v);
+        mYuv420.set_vIn(vAlloc);
+
+        // handover parameters
+        mYuv420.set_picWidth(width);
+        mYuv420.set_uvRowStride (uvRowStride);
+        mYuv420.set_uvPixelStride (uvPixelStride);
+
+        Bitmap outBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Allocation outAlloc = Allocation.createFromBitmap(rs, outBitmap, Allocation.MipmapControl.MIPMAP_NONE, Allocation.USAGE_SCRIPT);
+
+        Script.LaunchOptions lo = new Script.LaunchOptions();
+        lo.setX(0, width);  // by this we ignore the y’s padding zone, i.e. the right side of x between width and yRowStride
+        lo.setY(0, height);
+
+        mYuv420.forEach_doConvert(outAlloc,lo);
+        outAlloc.copyTo(outBitmap);
+
+        return outBitmap;
     }
 }

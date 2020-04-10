@@ -85,11 +85,15 @@ public class CameraController extends AppCompatActivity {
     private boolean mFlashSupported;
     private Handler mBackgroundHandler;
     private HandlerThread mBackgroundThread;
+    private StereoImageProcessor mStereoImageProcessor;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // load OpenCV
         OpenCVLoader.initDebug();
+
+        // load stereo image processor (initializes RenderScript)
+        mStereoImageProcessor = new StereoImageProcessor(this.getApplicationContext());
 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.camera_layout);
@@ -193,7 +197,7 @@ public class CameraController extends AppCompatActivity {
 
             // request builder to which to add the surfaces we're requesting
             CaptureRequest.Builder requestBuilder =
-                    cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD); // TODO: is template record right?
+                    cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE); // TODO: is template record right?
 
             // for each of the two physical devices
             for (int i = 0; i < 2; i++) {
@@ -218,7 +222,9 @@ public class CameraController extends AppCompatActivity {
                                 img = reader.acquireLatestImage();
 
 
-                                Mat rgbMat = StereoImageProcessor.Yuv420888toRGB(img);
+                                Bitmap imgBitmap = mStereoImageProcessor.YUV_420_888_toRGB(
+                                        img, imageDimension.getWidth(), imageDimension.getHeight()
+                                );
                                 //img.close();
 
                                 // save the image
@@ -228,12 +234,13 @@ public class CameraController extends AppCompatActivity {
 //                                buffer.get(bytes);
  //                               save(bytes);
 
-                                // output the bitmap to the texture view
-                                Bitmap imgBitmap = Bitmap.createBitmap(rgbMat.width(), rgbMat.height(), Bitmap.Config.ARGB_8888);
-                                Utils.matToBitmap(rgbMat, imgBitmap);
+                                // convert OpenCV matrix to bitmap
+                                //Bitmap imgBitmap = Bitmap.createBitmap(rgbMat.width(), rgbMat.height(), Bitmap.Config.ARGB_8888);
+                                //Utils.matToBitmap(rgbMat, imgBitmap);
+
                                 Rect rc = new Rect();
                                 Canvas c = textureView.lockCanvas(rc);
-                                rc.set(0, 0, rgbMat.width(), rgbMat.height());
+                                rc.set(0, 0, imageDimension.getWidth(), imageDimension.getHeight());
                                 c.drawBitmap(imgBitmap, 0, 0, null);
                                 textureView.unlockCanvasAndPost(c);
                                 Thread.sleep(3000);
@@ -260,8 +267,6 @@ public class CameraController extends AppCompatActivity {
                     }
                 };
 
-                // TODO: shouldn't need two listeners...should be able to get rid of above listeners
-                // and just use the capture listeners
                 reader.setOnImageAvailableListener(readerListener, mBackgroundHandler);
 
                 physicalImageReaders.add(reader);
@@ -304,17 +309,12 @@ public class CameraController extends AppCompatActivity {
                 }
             };
 
-            // TEMP: trying this instead of request builder
             SessionConfiguration sessionConfig = new SessionConfiguration(
                     SessionConfiguration.SESSION_REGULAR,
                     outputConfigs,
                     textureView.getContext().getMainExecutor(), // TODO: create a background executor (and remove background handler)
                     stateListener);
             cameraDevice.createCaptureSession(sessionConfig);
-
-            /*
-            cameraDevice.createCaptureSession(surfaces, stateListener, mBackgroundHandler);
-             */
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
