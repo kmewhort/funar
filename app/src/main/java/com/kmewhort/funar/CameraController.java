@@ -35,9 +35,11 @@ import android.util.Log;
 import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.Surface;
+import android.view.SurfaceView;
 import android.view.TextureView;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.Toast;
 
 import java.io.File;
@@ -51,6 +53,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.Executor;
 
 import com.kmewhort.funar.R;
 import com.kmewhort.funar.CameraSelector;
@@ -62,8 +65,8 @@ import org.opencv.core.Mat;
 // adapted from https://inducesmile.com/android/android-camera2-api-example-tutorial/
 public class CameraController extends AppCompatActivity {
     private static final String TAG = "CameraController";
-    private Button takePictureButton;
-    private TextureView textureView;
+    private TextureView textureView; // TODO: remove?
+    private ImageView mainView;
     private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
 
     static {
@@ -75,17 +78,27 @@ public class CameraController extends AppCompatActivity {
 
     private CameraSelector mCameraSelector;
     protected CameraDevice cameraDevice;
-    protected CameraCaptureSession cameraCaptureSessions;
-    protected CaptureRequest captureRequest;
+    protected CameraCaptureSession mCaptureSession;
+    protected CameraCaptureSession.CaptureCallback mCaptureListener;
+    protected CaptureRequest mCaptureRequest;
     protected CaptureRequest.Builder captureRequestBuilder;
     private Size imageDimension;
-    private ImageReader imageReader;
-    private File file;
     private static final int REQUEST_CAMERA_PERMISSION = 200;
     private boolean mFlashSupported;
+
+    List<ImageReader> mImageReaders;
+    List<OutputConfiguration> mOutputConfigs;
+    List<ImageReader.OnImageAvailableListener> mListeners;
+    List<Surface> mSurfaces;
+
     private Handler mBackgroundHandler;
     private HandlerThread mBackgroundThread;
+    private HandlerExecutor mBackgroundExecutor;
     private StereoImageProcessor mStereoImageProcessor;
+
+    private Bitmap mLeftBitmap;
+    private Bitmap mRightBitmap;
+    private boolean mBitmapConsumed;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -100,6 +113,15 @@ public class CameraController extends AppCompatActivity {
         textureView = (TextureView) findViewById(R.id.texture);
         assert textureView != null;
         textureView.setSurfaceTextureListener(textureListener);
+        mainView = (ImageView) findViewById(R.id.main_view);
+
+        // physical camera stream config
+        mImageReaders = new ArrayList<>();
+        mOutputConfigs = new ArrayList<>();
+        mListeners = new ArrayList<>();
+        mSurfaces = new ArrayList<>();
+
+        openCamera();
     }
 
     TextureView.SurfaceTextureListener textureListener = new TextureView.SurfaceTextureListener() {
@@ -130,7 +152,7 @@ public class CameraController extends AppCompatActivity {
             //This is called when the camera is open
             Log.e(TAG, "onOpened");
             cameraDevice = camera;
-            startTakingPictures();
+            startCaptureSession();
         }
 
         @Override
@@ -149,6 +171,7 @@ public class CameraController extends AppCompatActivity {
         mBackgroundThread = new HandlerThread("Camera Background");
         mBackgroundThread.start();
         mBackgroundHandler = new Handler(mBackgroundThread.getLooper());
+        mBackgroundExecutor = new HandlerExecutor(mBackgroundHandler);
     }
 
     protected void stopBackgroundThread() {
@@ -157,12 +180,13 @@ public class CameraController extends AppCompatActivity {
             mBackgroundThread.join();
             mBackgroundThread = null;
             mBackgroundHandler = null;
+            mBackgroundExecutor = null;
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
     }
 
-    protected void startTakingPictures() {
+    protected void startCaptureSession() {
         if (null == cameraDevice) {
             Log.e(TAG, "cameraDevice is null");
             return;
@@ -173,15 +197,14 @@ public class CameraController extends AppCompatActivity {
             CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraDevice.getId());
 
             // physical camera readers
-            List<ImageReader> physicalImageReaders = new ArrayList<>();
-            List<OutputConfiguration> outputConfigs = new ArrayList<>();
-            List<ImageReader.OnImageAvailableListener> listeners = new ArrayList<>();
-            List<Surface> surfaces = new ArrayList<>();
+            mImageReaders.clear();
+            mOutputConfigs.clear();
+            mListeners.clear();
+            mSurfaces.clear();
 
             // request builder to which to add the surfaces we're requesting
-            CaptureRequest.Builder requestBuilder =
-                    cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE); // TODO: is template record right?
-            requestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
+            captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE); // TODO: is template record right?
+            captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
 
             // for each of the two physical devices
             for (int i = 0; i < 2; i++) {
@@ -196,48 +219,20 @@ public class CameraController extends AppCompatActivity {
                 OutputConfiguration config = new OutputConfiguration(reader.getSurface());
                 config.setPhysicalCameraId(physicalCameraId);
 
-                ImageReader.OnImageAvailableListener readerListener = new ImageReader.OnImageAvailableListener() {
-                    @Override
-                    public void onImageAvailable(ImageReader reader) {
-                        Image img = null;
-                        try {
-                            img = reader.acquireLatestImage();
-                            if(img == null) // not sure why this happens
-                                return;
-
-                            Bitmap imgBitmap = mStereoImageProcessor.YUV_420_888_toRGB(
-                                    img, imageDimension.getWidth(), imageDimension.getHeight()
-                            );
-
-                            // convert OpenCV matrix to bitmap
-                            //Bitmap imgBitmap = Bitmap.createBitmap(rgbMat.width(), rgbMat.height(), Bitmap.Config.ARGB_8888);
-                            //Utils.matToBitmap(rgbMat, imgBitmap);
-
-                            Rect rc = new Rect();
-                            Canvas c = textureView.lockCanvas(rc);
-                            rc.set(0, 0, imageDimension.getWidth(), imageDimension.getHeight());
-                            c.drawBitmap(imgBitmap, 0, 0, null);
-                            textureView.unlockCanvasAndPost(c);
-                        } finally {
-                            if (img != null) {
-                                img.close();
-                            }
-                        }
-                    }
-                };
-
+                ImageReader.OnImageAvailableListener readerListener = readerListenerFactory(i == 0);
                 reader.setOnImageAvailableListener(readerListener, mBackgroundHandler);
 
-                physicalImageReaders.add(reader);
-                outputConfigs.add(config);
-                listeners.add(readerListener);
-                surfaces.add(reader.getSurface());
+                mImageReaders.add(reader);
+                mOutputConfigs.add(config);
+                mListeners.add(readerListener);
+                mSurfaces.add(reader.getSurface());
 
-                requestBuilder.addTarget(reader.getSurface());
+                captureRequestBuilder.addTarget(reader.getSurface());
             } // end for each physical device
 
+            mCaptureRequest = captureRequestBuilder.build();
 
-            final CameraCaptureSession.CaptureCallback captureListener = new CameraCaptureSession.CaptureCallback() {
+            mCaptureListener = new CameraCaptureSession.CaptureCallback() {
                 @Override
                 public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
                     super.onCaptureCompleted(session, request, result);
@@ -248,8 +243,10 @@ public class CameraController extends AppCompatActivity {
                 @Override
                 public void onConfigured(CameraCaptureSession session) {
                     try {
-                        //session.capture(requestBuilder.build(), captureListener, mBackgroundHandler);
-                        session.setRepeatingRequest(requestBuilder.build(), captureListener, mBackgroundHandler);
+                        mCaptureSession = session;
+
+                        mCaptureSession.capture(mCaptureRequest, mCaptureListener, mBackgroundHandler);
+                        //session.setRepeatingRequest(requestBuilder.build(), captureListener, mBackgroundHandler);
                     } catch (CameraAccessException e) {
                         e.printStackTrace();
                     }
@@ -262,12 +259,77 @@ public class CameraController extends AppCompatActivity {
 
             SessionConfiguration sessionConfig = new SessionConfiguration(
                     SessionConfiguration.SESSION_REGULAR,
-                    outputConfigs,
-                    textureView.getContext().getMainExecutor(), // TODO: create a background executor (and remove background handler)
+                    mOutputConfigs,
+                    mBackgroundExecutor,
                     stateListener);
             cameraDevice.createCaptureSession(sessionConfig);
         } catch (CameraAccessException e) {
             e.printStackTrace();
+        }
+    }
+
+    private ImageReader.OnImageAvailableListener readerListenerFactory(final boolean isLeft) {
+        return new ImageReader.OnImageAvailableListener() {
+            @Override
+            public void onImageAvailable(ImageReader reader) {
+
+                Image img = null;
+                img = reader.acquireLatestImage();
+                if (img == null) // not sure why this happens
+                    return;
+
+
+                Bitmap imgBitmap = mStereoImageProcessor.YUV_420_888_toRGB(
+                        img, imageDimension.getWidth(), imageDimension.getHeight()
+                );
+                img.close();
+
+
+                if (isLeft) {
+                    mLeftBitmap = imgBitmap;
+                } else {
+                    mRightBitmap = imgBitmap;
+                }
+
+                // only re-capture after we've received and processed both images
+                if (mLeftBitmap != null && mRightBitmap != null) {
+                    showBitmap(mLeftBitmap);
+
+                    try {
+                        mCaptureSession.capture(mCaptureRequest, mCaptureListener, mBackgroundHandler);
+                        //mCaptureSession.capture(captureRequestBuilder.build(), mCaptureListener, mBackgroundHandler);
+                    } catch (CameraAccessException e) {
+                        e.printStackTrace();
+                    }
+
+                    //startCaptureSession();
+                }
+            }
+        };
+    }
+
+    private void showBitmap(Bitmap bitmap) {
+        /* TODO: TextureView not working, using Image View for now
+        Rect rc = new Rect();
+        Canvas c = mainView.draw
+        rc.set(0, 0, imageDimension.getWidth(), imageDimension.getHeight());
+        c.drawBitmap(imgBitmap, 0, 0, null);
+        textureView.unlockCanvasAndPost(c);
+        */
+
+        mBitmapConsumed = false;
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                mainView.setImageBitmap(bitmap);
+                mBitmapConsumed = true;
+            }
+        });
+        while (!mBitmapConsumed) {
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+            }
         }
     }
 
@@ -297,10 +359,11 @@ public class CameraController extends AppCompatActivity {
             cameraDevice.close();
             cameraDevice = null;
         }
-        if (null != imageReader) {
-            imageReader.close();
-            imageReader = null;
+
+        for(int i = 0; i < mImageReaders.size(); i++) {
+            mImageReaders.get(i).close();
         }
+        mImageReaders.clear();
     }
 
     @Override

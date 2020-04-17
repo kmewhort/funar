@@ -9,6 +9,11 @@
         android:id="@+id/texture"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_above="@+id/btn_takepicture"
         android:layout_alignParentTop="true"/>
+    <ImageView
+        android:id="@+id/main_view"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentBottom="true" />
 </RelativeLayout>
