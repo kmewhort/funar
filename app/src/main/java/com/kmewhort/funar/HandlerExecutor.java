@@ -19,11 +19,13 @@ package com.kmewhort.funar;
  */
 
 import java.util.concurrent.Executor;
-import java.util.concurrent.RejectedExecutionException;
 import android.os.Handler;
+import android.util.Log;
 
 
 public class HandlerExecutor implements Executor {
+    private static final String TAG = "HandlerExecutor";
+
     private final Handler mHandler;
     public HandlerExecutor(Handler handler) {
         mHandler = handler;
@@ -31,8 +33,13 @@ public class HandlerExecutor implements Executor {
 
     @Override
     public void execute(Runnable command) {
-        if (!mHandler.post(command)) {
-            //throw new RejectedExecutionException(mHandler + " is shutting down");
+        // run on a best effort basis
+        try {
+            if (!mHandler.post(command)) {
+                Log.e(TAG, "Could not post (shutting down?)");
+            }
+        } catch(IllegalStateException e) {
+            Log.e(TAG, "Could not post (IllegalStateException)");
         }
     }
 }

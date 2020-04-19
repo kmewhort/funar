@@ -65,7 +65,6 @@ import org.opencv.core.Mat;
 // adapted from https://inducesmile.com/android/android-camera2-api-example-tutorial/
 public class CameraController extends AppCompatActivity {
     private static final String TAG = "CameraController";
-    private TextureView textureView; // TODO: remove?
     private ImageView mainView;
     private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
 
@@ -110,10 +109,9 @@ public class CameraController extends AppCompatActivity {
 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.camera_layout);
-        textureView = (TextureView) findViewById(R.id.texture);
-        assert textureView != null;
-        textureView.setSurfaceTextureListener(textureListener);
         mainView = (ImageView) findViewById(R.id.main_view);
+        assert mainView != null;
+
 
         // physical camera stream config
         mImageReaders = new ArrayList<>();
@@ -123,28 +121,6 @@ public class CameraController extends AppCompatActivity {
 
         openCamera();
     }
-
-    TextureView.SurfaceTextureListener textureListener = new TextureView.SurfaceTextureListener() {
-        @Override
-        public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
-            //open your camera here
-            openCamera();
-        }
-
-        @Override
-        public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
-            // Transform you image captured size according to the surface width and height
-        }
-
-        @Override
-        public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
-            return false;
-        }
-
-        @Override
-        public void onSurfaceTextureUpdated(SurfaceTexture surface) {
-        }
-    };
 
     private final CameraDevice.StateCallback stateCallback = new CameraDevice.StateCallback() {
         @Override
@@ -176,14 +152,10 @@ public class CameraController extends AppCompatActivity {
 
     protected void stopBackgroundThread() {
         mBackgroundThread.quitSafely();
-        try {
-            mBackgroundThread.join();
-            mBackgroundThread = null;
-            mBackgroundHandler = null;
-            mBackgroundExecutor = null;
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+        //mBackgroundThread.join();
+        mBackgroundThread = null;
+        mBackgroundHandler = null;
+        mBackgroundExecutor = null;
     }
 
     protected void startCaptureSession() {
@@ -272,7 +244,6 @@ public class CameraController extends AppCompatActivity {
         return new ImageReader.OnImageAvailableListener() {
             @Override
             public void onImageAvailable(ImageReader reader) {
-
                 Image img = null;
                 img = reader.acquireLatestImage();
                 if (img == null) // not sure why this happens
@@ -294,15 +265,18 @@ public class CameraController extends AppCompatActivity {
                 // only re-capture after we've received and processed both images
                 if (mLeftBitmap != null && mRightBitmap != null) {
                     showBitmap(mLeftBitmap);
+                    mLeftBitmap = null;
+                    mRightBitmap = null;
 
                     try {
                         mCaptureSession.capture(mCaptureRequest, mCaptureListener, mBackgroundHandler);
                         //mCaptureSession.capture(captureRequestBuilder.build(), mCaptureListener, mBackgroundHandler);
                     } catch (CameraAccessException e) {
                         e.printStackTrace();
+                    } catch (IllegalStateException e) {
+                        // camera already closed
+                        e.printStackTrace();
                     }
-
-                    //startCaptureSession();
                 }
             }
         };
@@ -383,17 +357,13 @@ public class CameraController extends AppCompatActivity {
         super.onResume();
         Log.e(TAG, "onResume");
         startBackgroundThread();
-        if (textureView.isAvailable()) {
-            openCamera();
-        } else {
-            textureView.setSurfaceTextureListener(textureListener);
-        }
+        openCamera();
     }
 
     @Override
     protected void onPause() {
         Log.e(TAG, "onPause");
-        //closeCamera();
+        closeCamera();
         stopBackgroundThread();
         super.onPause();
     }
