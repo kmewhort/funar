@@ -44,20 +44,17 @@ public class StereoImageProcessor {
         Utils.bitmapToMat(rightBmp, rMatRgb);
 
         // Mat RGB -> Mat gray
-        /*
         Mat lMatGray = new Mat();
         Mat rMatGray = new Mat();
         Imgproc.cvtColor(lMatRgb, lMatGray, Imgproc.COLOR_RGB2GRAY);
         Imgproc.cvtColor(rMatRgb, rMatGray, Imgproc.COLOR_RGB2GRAY);
-         */
 
         // disparity computation
         Mat resultMatGray16 = new Mat();
-        stereoSGBM.compute(lMatRgb, rMatRgb, resultMatGray16);
+        stereoSGBM.compute(lMatGray, rMatGray, resultMatGray16);
 
         // Gray Mat -> Bitmap
         Mat resultMatGray8 = new Mat(resultMatGray16.width(), resultMatGray16.height(), CV_8U);
-        //resultMatGray16.convertTo(resultMatGray8, CV_8U, 1.0/257.0);
         normalize(resultMatGray16, resultMatGray8, 0, 255, NORM_MINMAX, CV_8U);
 
         Mat resultMatRgb = new Mat();
