@@ -8,14 +8,63 @@ import android.util.Log;
 import java.nio.ByteBuffer;
 
 import android.renderscript.*;
-
 import com.kmewhort.funar.ScriptC_yuv420888;
+
+import org.opencv.calib3d.StereoBM;
+import org.opencv.calib3d.StereoSGBM;
+import org.opencv.core.CvType;
+import org.opencv.core.Mat;
+import org.opencv.android.Utils;
+import org.opencv.imgproc.Imgproc;
+
+import static android.graphics.Bitmap.Config.ALPHA_8;
+import static android.graphics.Bitmap.Config.ARGB_8888;
+import static org.opencv.core.Core.NORM_MINMAX;
+import static org.opencv.core.Core.normalize;
+import static org.opencv.core.CvType.CV_8U;
 
 public class StereoImageProcessor {
     private RenderScript rs;
+    private StereoSGBM stereoSGBM;
 
     public StereoImageProcessor(Context ctx) {
         rs = RenderScript.create(ctx);
+        stereoSGBM = StereoSGBM.create(); // TODO: set num disparities
+    }
+
+    public Bitmap calculateDisparity(Bitmap leftBmp, Bitmap rightBmp) {
+        // TODO: get rid of some of these conversions - eg straight to Mat from YUV420
+        // TODO: calc each channel seperately and recombine? Or actually, looks like
+        // multichannel can be fed to StereoSGBM
+
+        // RGB Bitmap -> Mat RGB
+        Mat lMatRgb = new Mat();
+        Mat rMatRgb = new Mat();
+        Utils.bitmapToMat(leftBmp, lMatRgb);
+        Utils.bitmapToMat(rightBmp, rMatRgb);
+
+        // Mat RGB -> Mat gray
+        /*
+        Mat lMatGray = new Mat();
+        Mat rMatGray = new Mat();
+        Imgproc.cvtColor(lMatRgb, lMatGray, Imgproc.COLOR_RGB2GRAY);
+        Imgproc.cvtColor(rMatRgb, rMatGray, Imgproc.COLOR_RGB2GRAY);
+         */
+
+        // disparity computation
+        Mat resultMatGray16 = new Mat();
+        stereoSGBM.compute(lMatRgb, rMatRgb, resultMatGray16);
+
+        // Gray Mat -> Bitmap
+        Mat resultMatGray8 = new Mat(resultMatGray16.width(), resultMatGray16.height(), CV_8U);
+        //resultMatGray16.convertTo(resultMatGray8, CV_8U, 1.0/257.0);
+        normalize(resultMatGray16, resultMatGray8, 0, 255, NORM_MINMAX, CV_8U);
+
+        Mat resultMatRgb = new Mat();
+        Imgproc.cvtColor(resultMatGray8, resultMatRgb, Imgproc.COLOR_GRAY2RGBA);
+        Bitmap resultBmp = Bitmap.createBitmap(resultMatRgb.width(), resultMatRgb.height(), ARGB_8888);
+        Utils.matToBitmap(resultMatRgb, resultBmp);
+        return resultBmp;
     }
 
     // adapted from https://stackoverflow.com/questions/36212904/yuv-420-888-interpretation-on-samsung-galaxy-s7-camera2
@@ -72,7 +121,7 @@ public class StereoImageProcessor {
         mYuv420.set_uvRowStride (uvRowStride);
         mYuv420.set_uvPixelStride (uvPixelStride);
 
-        Bitmap outBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Bitmap outBitmap = Bitmap.createBitmap(width, height, ARGB_8888);
         Allocation outAlloc = Allocation.createFromBitmap(rs, outBitmap, Allocation.MipmapControl.MIPMAP_NONE, Allocation.USAGE_SCRIPT);
 
         Script.LaunchOptions lo = new Script.LaunchOptions();

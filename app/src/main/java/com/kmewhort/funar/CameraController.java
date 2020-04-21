@@ -264,7 +264,8 @@ public class CameraController extends AppCompatActivity {
 
                 // only re-capture after we've received and processed both images
                 if (mLeftBitmap != null && mRightBitmap != null) {
-                    showBitmap(mLeftBitmap);
+                    //showBitmap(mLeftBitmap);
+                    showBitmap(mStereoImageProcessor.calculateDisparity(mLeftBitmap, mRightBitmap));
                     mLeftBitmap = null;
                     mRightBitmap = null;
 
