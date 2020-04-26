@@ -23,7 +23,7 @@ import static org.opencv.core.Core.NORM_MINMAX;
 import static org.opencv.core.Core.normalize;
 import static org.opencv.core.CvType.CV_8U;
 
-public class StereoImageProcessor {
+    public class StereoImageProcessor {
     private RenderScript rs;
     private StereoSGBM stereoSGBM;
 
@@ -54,7 +54,7 @@ public class StereoImageProcessor {
         stereoSGBM.compute(lMatGray, rMatGray, resultMatGray16);
 
         // Gray Mat -> Bitmap
-        Mat resultMatGray8 = new Mat(resultMatGray16.width(), resultMatGray16.height(), CV_8U);
+        Mat resultMatGray8 = new Mat(resultMatGray16.height(), resultMatGray16.width(), CV_8U);
         normalize(resultMatGray16, resultMatGray8, 0, 255, NORM_MINMAX, CV_8U);
 
         Mat resultMatRgb = new Mat();

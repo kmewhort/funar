@@ -95,9 +95,8 @@ public class CameraController extends AppCompatActivity {
     private HandlerExecutor mBackgroundExecutor;
     private StereoImageProcessor mStereoImageProcessor;
 
-    private Bitmap mLeftBitmap;
-    private Bitmap mRightBitmap;
     private boolean mBitmapConsumed;
+    private int mFrameCount;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -112,12 +111,13 @@ public class CameraController extends AppCompatActivity {
         mainView = (ImageView) findViewById(R.id.main_view);
         assert mainView != null;
 
-
         // physical camera stream config
         mImageReaders = new ArrayList<>();
         mOutputConfigs = new ArrayList<>();
         mListeners = new ArrayList<>();
         mSurfaces = new ArrayList<>();
+
+        mFrameCount = 0;
 
         openCamera();
     }
@@ -175,32 +175,27 @@ public class CameraController extends AppCompatActivity {
             mSurfaces.clear();
 
             // request builder to which to add the surfaces we're requesting
-            captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE); // TODO: is template record right?
+            captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
             captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
 
-            // for each of the two physical devices
-            for (int i = 0; i < 2; i++) {
-                ImageReader reader = ImageReader.newInstance(
-                        imageDimension.getWidth(),
-                        imageDimension.getHeight(),
-                        ImageFormat.YUV_420_888,
-                        2
-                );
+            ImageReader reader = ImageReader.newInstance(
+                    imageDimension.getWidth(),
+                    imageDimension.getHeight(),
+                    ImageFormat.DEPTH16,
+                    1
+            );
 
-                String physicalCameraId = mCameraSelector.physicalCameraId(i);
-                OutputConfiguration config = new OutputConfiguration(reader.getSurface());
-                config.setPhysicalCameraId(physicalCameraId);
+            OutputConfiguration config = new OutputConfiguration(reader.getSurface());
 
-                ImageReader.OnImageAvailableListener readerListener = readerListenerFactory(i == 0);
-                reader.setOnImageAvailableListener(readerListener, mBackgroundHandler);
+            ImageReader.OnImageAvailableListener readerListener = readerListenerFactory();
+            reader.setOnImageAvailableListener(readerListener, mBackgroundHandler);
 
-                mImageReaders.add(reader);
-                mOutputConfigs.add(config);
-                mListeners.add(readerListener);
-                mSurfaces.add(reader.getSurface());
+            mImageReaders.add(reader);
+            mOutputConfigs.add(config);
+            mListeners.add(readerListener);
+            mSurfaces.add(reader.getSurface());
 
-                captureRequestBuilder.addTarget(reader.getSurface());
-            } // end for each physical device
+            captureRequestBuilder.addTarget(reader.getSurface());
 
             mCaptureRequest = captureRequestBuilder.build();
 
@@ -240,7 +235,7 @@ public class CameraController extends AppCompatActivity {
         }
     }
 
-    private ImageReader.OnImageAvailableListener readerListenerFactory(final boolean isLeft) {
+    private ImageReader.OnImageAvailableListener readerListenerFactory() {
         return new ImageReader.OnImageAvailableListener() {
             @Override
             public void onImageAvailable(ImageReader reader) {
@@ -249,37 +244,23 @@ public class CameraController extends AppCompatActivity {
                 if (img == null) // not sure why this happens
                     return;
 
-
-                Bitmap imgBitmap = mStereoImageProcessor.YUV_420_888_toRGB(
-                        img, imageDimension.getWidth(), imageDimension.getHeight()
-                );
+                Bitmap imgBitmap = (new Depth16ImageProcessor(img)).contoursBmp();
                 img.close();
 
+                // show and re-capture
+                showBitmap(imgBitmap);
 
-                if (isLeft) {
-                    mLeftBitmap = imgBitmap;
-                } else {
-                    mRightBitmap = imgBitmap;
-                }
-
-                // only re-capture after we've received and processed both images
-                if (mLeftBitmap != null && mRightBitmap != null) {
-                    //showBitmap(mLeftBitmap);
-                    showBitmap(mStereoImageProcessor.calculateDisparity(mLeftBitmap, mRightBitmap));
-                    mLeftBitmap = null;
-                    mRightBitmap = null;
-
-                    try {
-                        mCaptureSession.capture(mCaptureRequest, mCaptureListener, mBackgroundHandler);
-                        //mCaptureSession.capture(captureRequestBuilder.build(), mCaptureListener, mBackgroundHandler);
-                    } catch (CameraAccessException e) {
-                        e.printStackTrace();
-                    } catch (IllegalStateException e) {
-                        // camera already closed
-                        e.printStackTrace();
-                    }
+                try {
+                    mCaptureSession.capture(mCaptureRequest, mCaptureListener, mBackgroundHandler);
+                    //mCaptureSession.capture(captureRequestBuilder.build(), mCaptureListener, mBackgroundHandler);
+                } catch (CameraAccessException e) {
+                    e.printStackTrace();
+                } catch (IllegalStateException e) {
+                    // camera already closed
+                    e.printStackTrace();
                 }
             }
+
         };
     }
 
@@ -313,7 +294,8 @@ public class CameraController extends AppCompatActivity {
         Log.e(TAG, "is camera open");
         try {
             mCameraSelector = new CameraSelector(manager);
-            CameraCharacteristics characteristics = manager.getCameraCharacteristics(mCameraSelector.stereoCameraId());
+            String cameraId = mCameraSelector.depthCameraId();
+            CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
             StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
             assert map != null;
             imageDimension = map.getOutputSizes(SurfaceTexture.class)[0];
@@ -322,7 +304,7 @@ public class CameraController extends AppCompatActivity {
                 ActivityCompat.requestPermissions(CameraController.this, new String[]{Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_CAMERA_PERMISSION);
                 return;
             }
-            manager.openCamera(mCameraSelector.stereoCameraId(), stateCallback, null);
+            manager.openCamera(cameraId, stateCallback, null);
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
