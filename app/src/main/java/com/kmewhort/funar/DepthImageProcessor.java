@@ -3,6 +3,7 @@ package com.kmewhort.funar;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.ImageFormat;
 import android.media.Image;
 import android.renderscript.Allocation;
 import android.renderscript.Element;
@@ -30,12 +31,12 @@ import static org.opencv.core.CvType.CV_16UC1;
 import static org.opencv.core.CvType.CV_8U;
 import static org.opencv.core.CvType.CV_8UC3;
 
-public class Depth16ImageProcessor {
+public class DepthImageProcessor implements ImageProcessor {
     Image mImage;
     Mat mMat;
     boolean mNormalize;
 
-    public Depth16ImageProcessor(Image img) {
+    public Bitmap process(Image img) {
         mImage = img;
 
         // load the buffers and convert to OpenCV
@@ -48,13 +49,27 @@ public class Depth16ImageProcessor {
         bitwise_and(raw, (new Mat(1, 1, CV_16UC1, new Scalar(0x1FFF))), mMat);
 
         mNormalize = true;
+
+        return contoursBmp();
     }
 
-    public Mat gray16() {
+    public int requiredInputFormat() {
+        return ImageFormat.DEPTH16;
+    }
+
+    public void setNormalize(boolean norm) {
+        mNormalize = norm;
+    }
+
+    public boolean getNormalize() {
+        return mNormalize;
+    }
+
+    protected Mat gray16() {
         return mMat;
     }
 
-    public Mat gray8() {
+    protected Mat gray8() {
         Mat gray8 = new Mat(mMat.height(), mMat.width(), CV_8U);
         if(mNormalize)
           normalize(gray16(), gray8, 0, 255, NORM_MINMAX, CV_8U);
@@ -63,7 +78,7 @@ public class Depth16ImageProcessor {
         return gray8;
     }
 
-    public Bitmap gray8Bmp() {
+    protected Bitmap gray8Bmp() {
         Mat rgbMat = new Mat();
         Imgproc.cvtColor(gray8(), rgbMat, Imgproc.COLOR_GRAY2RGBA);
         Bitmap resultBmp = Bitmap.createBitmap(rgbMat.width(), rgbMat.height(), ARGB_8888);
@@ -71,7 +86,7 @@ public class Depth16ImageProcessor {
         return resultBmp;
     }
 
-    public Bitmap colormap8Bmp() {
+    protected Bitmap colormap8Bmp() {
         Mat rgbMat = new Mat();
         Imgproc.applyColorMap(gray8(), rgbMat, Imgproc.COLORMAP_JET);
         Bitmap resultBmp = Bitmap.createBitmap(rgbMat.width(), rgbMat.height(), ARGB_8888);
@@ -79,7 +94,7 @@ public class Depth16ImageProcessor {
         return resultBmp;
     }
 
-    public Mat contours() {
+    protected Mat contours() {
         // TODO: use gray16 for generating contours; and without normalization?
         Mat gray = gray8();
 
@@ -103,14 +118,14 @@ public class Depth16ImageProcessor {
         return result;
     }
 
-    public Bitmap contoursBmp() {
+    protected Bitmap contoursBmp() {
         Mat mat = contours();
         Bitmap resultBmp = Bitmap.createBitmap(mat.width(), mat.height(), ARGB_8888);
         Utils.matToBitmap(mat, resultBmp);
         return resultBmp;
     }
 
-    public Bitmap gray8BmpBruteForce() {
+    protected Bitmap gray8BmpBruteForce() {
         // just for a sanity check....based on https://android.googlesource.com/platform/pdk/+/e148126c8e537755afcfe7c85db15bfc84fa9461/apps/TestingCamera2/src/com/android/testingcamera2/ImageReaderSubPane.java
         ShortBuffer y16Buffer = mImage.getPlanes()[0].getBuffer().asShortBuffer();
         y16Buffer.rewind();
@@ -130,13 +145,5 @@ public class Depth16ImageProcessor {
         }
         Bitmap result = Bitmap.createBitmap(imgArray, w, h, Bitmap.Config.ARGB_8888);
         return result;
-    }
-
-    public void setNormalize(boolean norm) {
-        mNormalize = norm;
-    }
-
-    public boolean getNormalize() {
-        return mNormalize;
     }
 }

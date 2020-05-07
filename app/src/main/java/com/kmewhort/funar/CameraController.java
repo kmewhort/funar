@@ -4,10 +4,7 @@ import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
-import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.ImageFormat;
-import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -23,7 +20,6 @@ import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.Image;
 import android.media.ImageReader;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 
@@ -35,32 +31,13 @@ import android.util.Log;
 import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.Surface;
-import android.view.SurfaceView;
-import android.view.TextureView;
-import android.view.View;
-import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.Toast;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.ByteBuffer;
-import java.nio.ShortBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
-import java.util.concurrent.Executor;
-
-import com.kmewhort.funar.R;
-import com.kmewhort.funar.CameraSelector;
 
 import org.opencv.android.OpenCVLoader;
-import org.opencv.android.Utils;
-import org.opencv.core.Mat;
 
 // adapted from https://inducesmile.com/android/android-camera2-api-example-tutorial/
 public class CameraController extends AppCompatActivity {
@@ -98,6 +75,8 @@ public class CameraController extends AppCompatActivity {
     private boolean mBitmapConsumed;
     private int mFrameCount;
 
+    private ImageProcessor mCurrentProcessor;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // load OpenCV
@@ -118,6 +97,8 @@ public class CameraController extends AppCompatActivity {
         mSurfaces = new ArrayList<>();
 
         mFrameCount = 0;
+
+        mCurrentProcessor = new DepthImageProcessor();
 
         openCamera();
     }
@@ -181,7 +162,7 @@ public class CameraController extends AppCompatActivity {
             ImageReader reader = ImageReader.newInstance(
                     imageDimension.getWidth(),
                     imageDimension.getHeight(),
-                    ImageFormat.DEPTH16,
+                    mCurrentProcessor.requiredInputFormat(),
                     1
             );
 
@@ -244,7 +225,7 @@ public class CameraController extends AppCompatActivity {
                 if (img == null) // not sure why this happens
                     return;
 
-                Bitmap imgBitmap = (new Depth16ImageProcessor(img)).contoursBmp();
+                Bitmap imgBitmap = mCurrentProcessor.process(img);
                 img.close();
 
                 // show and re-capture
