@@ -12,6 +12,7 @@ import org.opencv.core.MatOfPoint;
 import org.opencv.core.MatOfPoint2f;
 import org.opencv.core.Point;
 import org.opencv.core.Scalar;
+import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 
 import java.nio.ByteBuffer;
@@ -23,6 +24,7 @@ import static android.graphics.Bitmap.Config.ARGB_8888;
 import static java.lang.Math.sqrt;
 import static org.opencv.core.Core.NORM_MINMAX;
 import static org.opencv.core.Core.normalize;
+import static org.opencv.core.Core.split;
 import static org.opencv.core.CvType.CV_16UC1;
 import static org.opencv.core.CvType.CV_8U;
 import static org.opencv.core.CvType.CV_8UC3;
@@ -42,7 +44,8 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
         mRgbMat = new Mat(mRgbBitmap.getHeight(), mRgbBitmap.getWidth(), CvType.CV_8UC3);
         Utils.bitmapToMat(mRgbBitmap, mRgbMat);
 
-        return findAndDrawSquares();
+        //TODO: project an eg. green square and just find that
+        return findAndDrawSquare();
 
 
         // we want to:
@@ -66,109 +69,116 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
         return ImageFormat.DEPTH_JPEG;
     }
 
-    private Bitmap findAndDrawSquares() {
-        List<MatOfPoint2f> squares2f = findSquares();
-        if(squares2f.size() == 0)
+    private Bitmap findAndDrawSquare() {
+        MatOfPoint2f square2f = findSquare();
+        if(square2f == null)
             return null;
 
-        List<MatOfPoint> squares = new ArrayList<>();
+        MatOfPoint square = new MatOfPoint();
+        square2f.convertTo(square, CvType.CV_32S);
 
-        for(int i = 0; i < squares2f.size(); i++) {
-            MatOfPoint s = new MatOfPoint();
-            squares2f.get(i).convertTo(s, CvType.CV_32S);
-            squares.add(s);
-        }
-
+        List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+        contours.add(square);
         Bitmap resultBmp = Bitmap.createBitmap(mRgbMat.width(), mRgbMat.height(), ARGB_8888);
-        Imgproc.drawContours(mRgbMat, squares, -1, new Scalar(0, 255, 0), 30);
+        Imgproc.drawContours(mRgbMat, contours, 0, new Scalar(0, 255, 0), 30);
         Utils.matToBitmap(mRgbMat, resultBmp);
         return resultBmp;
     }
 
     // based on Karl Phillip: https://stackoverflow.com/questions/8667818/opencv-c-obj-c-detecting-a-sheet-of-paper-square-detection/14368605#14368605
-    private List<MatOfPoint2f> findSquares()
-    {
+    private MatOfPoint2f findSquare() {
         // another possible solution if this doesn't work: Jeru Luke here: https://stackoverflow.com/questions/7263621/how-to-find-corners-on-a-image-using-opencv
-        List<MatOfPoint2f> squares = new ArrayList<MatOfPoint2f>();
+        MatOfPoint2f largestSquare = null;
+        double largestSquareArea = 0;
 
-        Mat blurredRgb = new Mat();
-        medianBlur(mRgbMat, blurredRgb, 9);
+        //Mat gray8 = new Mat(mRgbMat.height(), mRgbMat.width(), CV_8U);
+        //Imgproc.cvtColor(mRgbMat, gray8, Imgproc.COLOR_RGB2GRAY);
+        //normalize(gray8, gray8, 0, 255, NORM_MINMAX, CV_8U);
+        //Imgproc.GaussianBlur(gray8, gray8, new Size(7,7), 0);
 
-        Mat gray8 = new Mat(blurredRgb.height(), blurredRgb.width(), CV_8U);
-        Imgproc.cvtColor(blurredRgb, gray8, Imgproc.COLOR_RGB2GRAY);
+        // convert to hsv-space, then split the channels
+        Mat hsv = new Mat(mRgbMat.height(), mRgbMat.width(), CV_8UC3);
+        Imgproc.cvtColor(mRgbMat, hsv, Imgproc.COLOR_BGR2HSV);
+        List<Mat> splitMat = new ArrayList<Mat>(3);
+        split(hsv,splitMat);
+        Mat gray8 = splitMat.get(2);
+        medianBlur(gray8, gray8, 9);
 
-        // try several threshold levels
-        // TODO: just use Canny, or one threshold?
-        int THRESHOLD_LEVEL = 2;
-        for (int l = 1; l < THRESHOLD_LEVEL; l++)
-        {
-            Mat thresholded = new Mat();
-            // Use Canny instead of zero threshold level!
-            // Canny helps to catch squares with gradient shading
-            if (l == 0)
-            {
-                Imgproc.Canny(gray8, thresholded, 10, 20, 3); //
 
-                // Dilate helps to remove potential holes between edge segments
-                Imgproc.dilate(thresholded, thresholded, new Mat(), new Point(-1,-1));
-            }
-            else {
-                Imgproc.threshold(gray8, thresholded, 255/(l+THRESHOLD_LEVEL), 255, 0);
-            }
+        // the projection should be by far the brightest area - normalize and set a high threshold
+        int[] thresholds = new int[]{200, 250};
+        for(int i = 0; i < thresholds.length; i++) {
+            Imgproc.threshold(gray8, gray8, thresholds[i], 255, 0);
+
+            //Imgproc.Canny(gray8, gray8, 0, 50, 5);
+            // Dilate helps to remove potential holes between edge segments
+            //Imgproc.dilate(gray8, gray8, new Mat(), new Point(-1,-1));
+
+            // debug
+            Mat rgbMat = new Mat();
+            Imgproc.cvtColor(gray8, rgbMat, Imgproc.COLOR_GRAY2RGBA);
+            Bitmap resultBmp = Bitmap.createBitmap(rgbMat.width(), rgbMat.height(), ARGB_8888);
+            Utils.matToBitmap(rgbMat, resultBmp);
 
             List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
             Mat hierarchy = new Mat();
-            Imgproc.findContours(thresholded, contours, hierarchy, Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE);
+            Imgproc.findContours(gray8, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
 
             // Test contours
             MatOfPoint2f approx = new MatOfPoint2f();
-            for (int i = 0; i < contours.size(); i++)
-            {
+            for (int j = 0; j < contours.size(); j++) {
                 // approximate contour with accuracy proportional
                 // to the contour perimeter
-                MatOfPoint2f contourf = new MatOfPoint2f(contours.get(i).toArray());
+                MatOfPoint2f contourf = new MatOfPoint2f(contours.get(j).toArray());
+
                 double arclength = Imgproc.arcLength(new MatOfPoint2f(contourf), true);
                 Imgproc.approxPolyDP(
                         contourf,
                         approx,
-                        arclength*0.02,
+                        arclength * 0.02,  // initially 0.02
                         true);
 
                 // Note: absolute value of an area is used because
                 // area may be positive or negative - in accordance with the
                 // contour orientation
+                double area = 0;
                 if (approx.rows() == 4 &&
-                        Math.abs(Imgproc.contourArea(approx)) > 50) //&& // TODO: is 1000 correct here?
-                        //Imgproc.isContourConvex(approx)
+                        (area = Math.abs(Imgproc.contourArea(approx))) > 500)
+                //Imgproc.isContourConvex(approx)
                 {
-                    squares.add(approx);
-                    /*
-                    double maxCosine = 0;
+                    if(area > largestSquareArea) {
 
-                    for (int j = 2; j < 5; j++)
-                    {
-                        Point[] points = approx.toArray();
-                        double cosine = Math.abs(angle(points[j%4], points[j-2], points[j-1]));
-                        maxCosine = Math.max(maxCosine, cosine);
+                        double maxCosine = 0;
 
-                        if (maxCosine < 0.3)
-                            squares.add(approx);
+                        /*
+                        for (int k = 2; k < 5; k++) {
+                            Point[] points = approx.toArray();
+                            double cosine = Math.abs(angle(points[k % 4], points[k - 2], points[k - 1]));
+                            maxCosine = Math.max(maxCosine, cosine);
+
+                            if (maxCosine < 0.3) {
+                                largestSquare = approx;
+                                largestSquareArea = area;
+                            }
+                        }*/
+
+                        //largestSquare = approx;
+                        //largestSquareArea = area;
                     }
-                    */
+
                 }
             }
         }
 
-        return squares;
+        return largestSquare;
     }
 
-    double angle(Point pt1, Point pt2, Point pt0)
-    {
+    double angle(Point pt1, Point pt2, Point pt0) {
         double dx1 = pt1.x - pt0.x;
         double dy1 = pt1.y - pt0.y;
         double dx2 = pt2.x - pt0.x;
         double dy2 = pt2.y - pt0.y;
-        return (dx1*dx2 + dy1*dy2)/sqrt((dx1*dx1 + dy1*dy1)*(dx2*dx2 + dy2*dy2) + 1e-10);
+        return (dx1 * dx2 + dy1 * dy2) / sqrt((dx1 * dx1 + dy1 * dy1) * (dx2 * dx2 + dy2 * dy2) + 1e-10);
     }
 
 }
