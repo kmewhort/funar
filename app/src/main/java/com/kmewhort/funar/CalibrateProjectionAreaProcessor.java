@@ -68,6 +68,9 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
 
     private Bitmap findAndDrawSquares() {
         List<MatOfPoint2f> squares2f = findSquares();
+        if(squares2f.size() == 0)
+            return null;
+
         List<MatOfPoint> squares = new ArrayList<>();
 
         for(int i = 0; i < squares2f.size(); i++) {
@@ -76,19 +79,16 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
             squares.add(s);
         }
 
-        Mat resultMat = new Mat(mRgbMat.height(), mRgbMat.width(), CV_8UC3);
-        Imgproc.drawContours(resultMat, squares, -1, new Scalar(0, 255, 0), 1);
-
         Bitmap resultBmp = Bitmap.createBitmap(mRgbMat.width(), mRgbMat.height(), ARGB_8888);
-        Utils.matToBitmap(resultMat, resultBmp);
+        Imgproc.drawContours(mRgbMat, squares, -1, new Scalar(0, 255, 0), 30);
+        Utils.matToBitmap(mRgbMat, resultBmp);
         return resultBmp;
     }
 
     // based on Karl Phillip: https://stackoverflow.com/questions/8667818/opencv-c-obj-c-detecting-a-sheet-of-paper-square-detection/14368605#14368605
     private List<MatOfPoint2f> findSquares()
     {
-        // another possible solution if this doesn't work:         // - Jeru Luke here: https://stackoverflow.com/questions/7263621/how-to-find-corners-on-a-image-using-opencv
-
+        // another possible solution if this doesn't work: Jeru Luke here: https://stackoverflow.com/questions/7263621/how-to-find-corners-on-a-image-using-opencv
         List<MatOfPoint2f> squares = new ArrayList<MatOfPoint2f>();
 
         Mat blurredRgb = new Mat();
@@ -100,7 +100,7 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
         // try several threshold levels
         // TODO: just use Canny, or one threshold?
         int THRESHOLD_LEVEL = 2;
-        for (int l = 0; l < THRESHOLD_LEVEL; l++)
+        for (int l = 1; l < THRESHOLD_LEVEL; l++)
         {
             Mat thresholded = new Mat();
             // Use Canny instead of zero threshold level!
@@ -113,7 +113,7 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
                 Imgproc.dilate(thresholded, thresholded, new Mat(), new Point(-1,-1));
             }
             else {
-                Imgproc.threshold(gray8, thresholded, (l+1)*255/THRESHOLD_LEVEL, 255, 0);
+                Imgproc.threshold(gray8, thresholded, 255/(l+THRESHOLD_LEVEL), 255, 0);
             }
 
             List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
@@ -137,20 +137,24 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
                 // Note: absolute value of an area is used because
                 // area may be positive or negative - in accordance with the
                 // contour orientation
-                if (approx.cols() == 4 &&
-                        Math.abs(Imgproc.contourArea(approx)) > 1000) //&& // TODO: is 1000 correct here?
+                if (approx.rows() == 4 &&
+                        Math.abs(Imgproc.contourArea(approx)) > 50) //&& // TODO: is 1000 correct here?
                         //Imgproc.isContourConvex(approx)
                 {
+                    squares.add(approx);
+                    /*
                     double maxCosine = 0;
 
                     for (int j = 2; j < 5; j++)
                     {
-                        double cosine = Math.abs(angle(approx.col(j%4), approx.col(j-2), approx.col(j-1)));
+                        Point[] points = approx.toArray();
+                        double cosine = Math.abs(angle(points[j%4], points[j-2], points[j-1]));
                         maxCosine = Math.max(maxCosine, cosine);
 
                         if (maxCosine < 0.3)
                             squares.add(approx);
                     }
+                    */
                 }
             }
         }
@@ -158,13 +162,12 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
         return squares;
     }
 
-    double angle(Mat pt1, Mat pt2, Mat pt0)
+    double angle(Point pt1, Point pt2, Point pt0)
     {
-        // TODO: this is weird
-        double dx1 = pt1.get(0,0)[0] - pt0.get(0,0)[0];
-        double dy1 = pt1.get(1,0)[0] - pt0.get(1,0)[0];
-        double dx2 = pt2.get(0,0)[0] - pt0.get(0,0)[0];
-        double dy2 = pt2.get(1,0)[0] - pt0.get(1,0)[0];
+        double dx1 = pt1.x - pt0.x;
+        double dy1 = pt1.y - pt0.y;
+        double dx2 = pt2.x - pt0.x;
+        double dy2 = pt2.y - pt0.y;
         return (dx1*dx2 + dy1*dy2)/sqrt((dx1*dx1 + dy1*dy1)*(dx2*dx2 + dy2*dy2) + 1e-10);
     }
 

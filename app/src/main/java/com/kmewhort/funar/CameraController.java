@@ -98,7 +98,8 @@ public class CameraController extends AppCompatActivity {
 
         mFrameCount = 0;
 
-        mCurrentProcessor = new DepthImageProcessor();
+        //mCurrentProcessor = new DepthImageProcessor();
+        mCurrentProcessor = new CalibrateProjectionAreaProcessor();
 
         openCamera();
     }
@@ -229,7 +230,8 @@ public class CameraController extends AppCompatActivity {
                 img.close();
 
                 // show and re-capture
-                showBitmap(imgBitmap);
+                if(imgBitmap != null)
+                    showBitmap(imgBitmap);
 
                 try {
                     mCaptureSession.capture(mCaptureRequest, mCaptureListener, mBackgroundHandler);
