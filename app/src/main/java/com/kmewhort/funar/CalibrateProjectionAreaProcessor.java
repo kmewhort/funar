@@ -6,6 +6,7 @@ import android.graphics.ImageFormat;
 import android.media.Image;
 
 import org.opencv.android.Utils;
+import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfPoint;
@@ -45,8 +46,7 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
         Utils.bitmapToMat(mRgbBitmap, mRgbMat);
 
         //TODO: project an eg. green square and just find that
-        return findAndDrawSquare();
-
+        return findAndDrawScreen();
 
         // we want to:
         // 1. Get the RGB image and find the bright quadrilateral
@@ -69,111 +69,97 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
         return ImageFormat.DEPTH_JPEG;
     }
 
-    private Bitmap findAndDrawSquare() {
-        MatOfPoint2f square2f = findSquare();
-        if(square2f == null)
+    private Bitmap findAndDrawScreen() {
+        MatOfPoint2f quad2f = findLargestBrightestQuad();
+        if(quad2f == null)
             return null;
 
-        MatOfPoint square = new MatOfPoint();
-        square2f.convertTo(square, CvType.CV_32S);
+        MatOfPoint quad = new MatOfPoint();
+        quad2f.convertTo(quad, CvType.CV_32S);
 
         List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
-        contours.add(square);
+        contours.add(quad);
         Bitmap resultBmp = Bitmap.createBitmap(mRgbMat.width(), mRgbMat.height(), ARGB_8888);
-        Imgproc.drawContours(mRgbMat, contours, 0, new Scalar(0, 255, 0), 30);
+        Imgproc.drawContours(mRgbMat, contours, 0, new Scalar(0, 255, 0), 5);
         Utils.matToBitmap(mRgbMat, resultBmp);
         return resultBmp;
     }
 
-    // based on Karl Phillip: https://stackoverflow.com/questions/8667818/opencv-c-obj-c-detecting-a-sheet-of-paper-square-detection/14368605#14368605
-    private MatOfPoint2f findSquare() {
-        // another possible solution if this doesn't work: Jeru Luke here: https://stackoverflow.com/questions/7263621/how-to-find-corners-on-a-image-using-opencv
+    // based loosely on Karl Phillip: https://stackoverflow.com/questions/8667818/opencv-c-obj-c-detecting-a-sheet-of-paper-square-detection/14368605#14368605
+    private MatOfPoint2f findLargestBrightestQuad() {
+        // value channel from HSV works best for brightness
+        Mat gray8 = this.hsvValueChannel();
+
+        // blur and downsample
+        int SIZE_REDUCTION = 4;
+        Imgproc.GaussianBlur(gray8, gray8, new Size(31,31), 0);
+        Imgproc.resize(gray8, gray8, new Size(gray8.width()/SIZE_REDUCTION,gray8.height()/SIZE_REDUCTION));
+
+        // find the quadrilaterals
+        List<MatOfPoint2f> quads = findQuadContours(gray8);
+
+        // find the biggest
         MatOfPoint2f largestSquare = null;
         double largestSquareArea = 0;
+        for(int i = 0; i < quads.size(); i++) {
+            MatOfPoint2f quad = quads.get(i);
+            double area = Math.abs(Imgproc.contourArea(quad));
+            if(area > largestSquareArea) {
+                largestSquare = quad;
+                largestSquareArea = area;
+            }
+        }
 
-        //Mat gray8 = new Mat(mRgbMat.height(), mRgbMat.width(), CV_8U);
-        //Imgproc.cvtColor(mRgbMat, gray8, Imgproc.COLOR_RGB2GRAY);
-        //normalize(gray8, gray8, 0, 255, NORM_MINMAX, CV_8U);
-        //Imgproc.GaussianBlur(gray8, gray8, new Size(7,7), 0);
+        MatOfPoint2f rescaled = new MatOfPoint2f();
+        if(largestSquare != null) {
+            Core.multiply(largestSquare, new Scalar(SIZE_REDUCTION, SIZE_REDUCTION), largestSquare);
+        }
+        return largestSquare;
+    }
 
+    private List<MatOfPoint2f> findQuadContours(Mat gray8) {
+        List<MatOfPoint2f> result = new ArrayList<MatOfPoint2f>();
+
+        // the projection should be by far the brightest area - use two high thresholds
+        int[] thresholds = new int[]{200, 250};
+        for(int i = 0; i < thresholds.length; i++) {
+            Imgproc.threshold(gray8, gray8, thresholds[i], 255, 0);
+
+            List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+            Mat hierarchy = new Mat();
+            Imgproc.findContours(gray8, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
+
+            // find the contours that are actually quadrilaterals
+            for (int j = 0; j < contours.size(); j++) {
+                MatOfPoint2f contourf = new MatOfPoint2f(contours.get(j).toArray());
+
+                // simplify the contour (proportional to arc length)
+                double arclength = Imgproc.arcLength(new MatOfPoint2f(contourf), true);
+                MatOfPoint2f approx = new MatOfPoint2f();
+                Imgproc.approxPolyDP(
+                        contourf,
+                        approx,
+                        arclength * 0.02,
+                        true);
+
+                if (approx.rows() == 4)
+                    result.add(approx);
+            }
+        }
+        return result;
+    }
+
+    private Mat hsvValueChannel() {
         // convert to hsv-space, then split the channels
         Mat hsv = new Mat(mRgbMat.height(), mRgbMat.width(), CV_8UC3);
         Imgproc.cvtColor(mRgbMat, hsv, Imgproc.COLOR_BGR2HSV);
         List<Mat> splitMat = new ArrayList<Mat>(3);
         split(hsv,splitMat);
         Mat gray8 = splitMat.get(2);
-        medianBlur(gray8, gray8, 9);
-
-
-        // the projection should be by far the brightest area - normalize and set a high threshold
-        int[] thresholds = new int[]{200, 250};
-        for(int i = 0; i < thresholds.length; i++) {
-            Imgproc.threshold(gray8, gray8, thresholds[i], 255, 0);
-
-            //Imgproc.Canny(gray8, gray8, 0, 50, 5);
-            // Dilate helps to remove potential holes between edge segments
-            //Imgproc.dilate(gray8, gray8, new Mat(), new Point(-1,-1));
-
-            // debug
-            Mat rgbMat = new Mat();
-            Imgproc.cvtColor(gray8, rgbMat, Imgproc.COLOR_GRAY2RGBA);
-            Bitmap resultBmp = Bitmap.createBitmap(rgbMat.width(), rgbMat.height(), ARGB_8888);
-            Utils.matToBitmap(rgbMat, resultBmp);
-
-            List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
-            Mat hierarchy = new Mat();
-            Imgproc.findContours(gray8, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
-
-            // Test contours
-            MatOfPoint2f approx = new MatOfPoint2f();
-            for (int j = 0; j < contours.size(); j++) {
-                // approximate contour with accuracy proportional
-                // to the contour perimeter
-                MatOfPoint2f contourf = new MatOfPoint2f(contours.get(j).toArray());
-
-                double arclength = Imgproc.arcLength(new MatOfPoint2f(contourf), true);
-                Imgproc.approxPolyDP(
-                        contourf,
-                        approx,
-                        arclength * 0.02,  // initially 0.02
-                        true);
-
-                // Note: absolute value of an area is used because
-                // area may be positive or negative - in accordance with the
-                // contour orientation
-                double area = 0;
-                if (approx.rows() == 4 &&
-                        (area = Math.abs(Imgproc.contourArea(approx))) > 500)
-                //Imgproc.isContourConvex(approx)
-                {
-                    if(area > largestSquareArea) {
-
-                        double maxCosine = 0;
-
-                        /*
-                        for (int k = 2; k < 5; k++) {
-                            Point[] points = approx.toArray();
-                            double cosine = Math.abs(angle(points[k % 4], points[k - 2], points[k - 1]));
-                            maxCosine = Math.max(maxCosine, cosine);
-
-                            if (maxCosine < 0.3) {
-                                largestSquare = approx;
-                                largestSquareArea = area;
-                            }
-                        }*/
-
-                        //largestSquare = approx;
-                        //largestSquareArea = area;
-                    }
-
-                }
-            }
-        }
-
-        return largestSquare;
+        return gray8;
     }
 
-    double angle(Point pt1, Point pt2, Point pt0) {
+    private double angle(Point pt1, Point pt2, Point pt0) {
         double dx1 = pt1.x - pt0.x;
         double dy1 = pt1.y - pt0.y;
         double dx2 = pt2.x - pt0.x;
@@ -181,4 +167,31 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
         return (dx1 * dx2 + dy1 * dy2) / sqrt((dx1 * dx1 + dy1 * dy1) * (dx2 * dx2 + dy2 * dy2) + 1e-10);
     }
 
+    private Bitmap contourDebug2f(List<MatOfPoint2f> contours2f) {
+        if(contours2f.size() == 0)
+            return null;
+
+        List<MatOfPoint> contours = new ArrayList<>();
+
+        for(int i = 0; i < contours2f.size(); i++) {
+            MatOfPoint s = new MatOfPoint();
+            contours2f.get(i).convertTo(s, CvType.CV_32S);
+            contours.add(s);
+        }
+
+        return contourDebug(contours);
+    }
+
+    private Bitmap contourDebug(List<MatOfPoint> contours) {
+        if(contours.size() == 0)
+            return null;
+
+        Bitmap resultBmp = Bitmap.createBitmap(mRgbMat.width(), mRgbMat.height(), ARGB_8888);
+        //Imgproc.drawContours(mRgbMat, contours, -1, new Scalar(0, 255, 0), 30);
+        for(int i = 0; i < contours.size(); i++) {
+            Imgproc.drawContours(mRgbMat, contours, i, new Scalar(0, 255, 0), 30);
+        }
+        Utils.matToBitmap(mRgbMat, resultBmp);
+        return resultBmp;
+    }
 }
