@@ -5,6 +5,15 @@ import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
 import android.media.Image;
 
+import com.adobe.internal.xmp.XMPException;
+import com.adobe.internal.xmp.XMPIterator;
+import com.adobe.internal.xmp.XMPMeta;
+import com.adobe.internal.xmp.properties.XMPPropertyInfo;
+import com.drew.imaging.ImageMetadataReader;
+import com.drew.imaging.ImageProcessingException;
+import com.drew.metadata.Metadata;
+import com.drew.metadata.xmp.XmpDirectory;
+
 import org.opencv.android.Utils;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
@@ -16,8 +25,12 @@ import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 
+import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 import static android.bluetooth.BluetoothHidDeviceAppQosSettings.MAX;
@@ -32,28 +45,28 @@ import static org.opencv.core.CvType.CV_8UC3;
 import static org.opencv.imgproc.Imgproc.medianBlur;
 
 public class CalibrateProjectionAreaProcessor implements ImageProcessor {
+    private byte[] mImageData;
     private Bitmap mRgbBitmap;
     private Mat mRgbMat;
 
     public Bitmap process(Image img) {
         ByteBuffer buffer = img.getPlanes()[0].getBuffer();
-        byte[] data = new byte[buffer.remaining()];
-        buffer.get(data);
-        mRgbBitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
+        mImageData = new byte[buffer.remaining()];
+        buffer.get(mImageData);
+        mRgbBitmap = BitmapFactory.decodeByteArray(mImageData, 0, mImageData.length);
 
         // TODO: there may be a way to go straight to Mat through OpenCV decode
         mRgbMat = new Mat(mRgbBitmap.getHeight(), mRgbBitmap.getWidth(), CvType.CV_8UC3);
         Utils.bitmapToMat(mRgbBitmap, mRgbMat);
 
-        //TODO: project an eg. green square and just find that
-        return findAndDrawScreen();
-
-        // we want to:
         // 1. Get the RGB image and find the bright quadrilateral
-        // - Jeru Luke here: https://stackoverflow.com/questions/7263621/how-to-find-corners-on-a-image-using-opencv
-        // - Or Karl Phillip here: https://stackoverflow.com/questions/8667818/opencv-c-obj-c-detecting-a-sheet-of-paper-square-detection/14368605#14368605
+        // TODO: project an eg. green square and just find that
+        //return findAndDrawScreen();
 
-        // 2. Get the Depth image that matches from the depth JPEG
+        // 2. Get the depth image from depth JPEG
+        getXmp();
+        return null;
+
         // 3. Find a match for the depth image in the Depth16 image
         // 4. determine the co-ordinates of the depth16 image, which is where we want to trim
         // our depth to
@@ -193,5 +206,44 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
         }
         Utils.matToBitmap(mRgbMat, resultBmp);
         return resultBmp;
+    }
+
+    private void getXmp() {
+        Metadata metadata = getExif();
+        Collection<XmpDirectory> xmpDirectories = metadata.getDirectoriesOfType(XmpDirectory.class);
+        for (XmpDirectory xmpDirectory : xmpDirectories) {
+            XMPMeta xmpMeta = xmpDirectory.getXMPMeta();
+            XMPIterator iterator = null;
+            try {
+                iterator = xmpMeta.iterator();
+            } catch (XMPException e) {
+                e.printStackTrace();
+            }
+            int largestStrLength = 0;
+            String path = "";
+            while (iterator.hasNext()) {
+                XMPPropertyInfo xmpPropertyInfo = (XMPPropertyInfo)iterator.next();
+                System.out.println(xmpPropertyInfo.getPath() + ":" + xmpPropertyInfo.getValue());
+                if(xmpPropertyInfo.getValue() != null && (xmpPropertyInfo.getValue().length() > largestStrLength)) {
+                    largestStrLength = xmpPropertyInfo.getValue().length();
+                    path = xmpPropertyInfo.getPath();
+                }
+            }
+            path = path + "a";
+        }
+    }
+
+    private Metadata getExif() {
+        Metadata metadata = null;
+        try {
+            metadata = ImageMetadataReader.readMetadata(
+                    new BufferedInputStream(new ByteArrayInputStream(mImageData)),
+                    mImageData.length);
+        } catch (ImageProcessingException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return metadata;
     }
 }
