@@ -32,17 +32,15 @@ import static org.opencv.core.CvType.CV_8U;
 import static org.opencv.core.CvType.CV_8UC3;
 
 public class DepthImageProcessor implements ImageProcessor {
-    Image mImage;
     Mat mMat;
     boolean mNormalize;
 
     public Bitmap process(Image img) {
-        mImage = img;
-
         // load the buffers and convert to OpenCV
         Image.Plane[] planes = img.getPlanes();
         ByteBuffer buffer = planes[0].getBuffer();
         Mat raw = new Mat(img.getHeight(), img.getWidth(), CV_16UC1, buffer);
+        img.close();
 
         // first three bits are the confidence - mask them out
         mMat = new Mat();
@@ -50,7 +48,8 @@ public class DepthImageProcessor implements ImageProcessor {
 
         mNormalize = true;
 
-        return contoursBmp();
+        //return contoursBmp();
+        return gray8Bmp();
     }
 
     public int requiredInputFormat() {
@@ -125,13 +124,13 @@ public class DepthImageProcessor implements ImageProcessor {
         return resultBmp;
     }
 
-    protected Bitmap gray8BmpBruteForce() {
+    protected Bitmap gray8BmpBruteForce(Image image) {
         // just for a sanity check....based on https://android.googlesource.com/platform/pdk/+/e148126c8e537755afcfe7c85db15bfc84fa9461/apps/TestingCamera2/src/com/android/testingcamera2/ImageReaderSubPane.java
-        ShortBuffer y16Buffer = mImage.getPlanes()[0].getBuffer().asShortBuffer();
+        ShortBuffer y16Buffer = image.getPlanes()[0].getBuffer().asShortBuffer();
         y16Buffer.rewind();
-        int w = mImage.getWidth();
-        int h = mImage.getHeight();
-        int stride = mImage.getPlanes()[0].getRowStride();
+        int w = image.getWidth();
+        int h = image.getHeight();
+        int stride = image.getPlanes()[0].getRowStride();
         short[] yRow = new short[w];
         int[] imgArray = new int[w * h];
         for (int y = 0, j = 0; y < h; y++) {

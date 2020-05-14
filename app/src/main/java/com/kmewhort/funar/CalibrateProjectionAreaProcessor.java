@@ -29,6 +29,7 @@ import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -49,52 +50,91 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
     private Bitmap mRgbBitmap;
     private Mat mRgbMat;
 
+    private int mProcessingStartTime;
+    private int mDepthProjectStartTime;
+
+    private MatOfPoint2f mQuad;
+
+    public CalibrateProjectionAreaProcessor() {
+        mProcessingStartTime = -1;
+        mDepthProjectStartTime = -1;
+    }
+
     public Bitmap process(Image img) {
-        ByteBuffer buffer = img.getPlanes()[0].getBuffer();
-        mImageData = new byte[buffer.remaining()];
-        buffer.get(mImageData);
-        mRgbBitmap = BitmapFactory.decodeByteArray(mImageData, 0, mImageData.length);
+        // TODO: flag to turn UI for calibration on/off
 
-        // TODO: there may be a way to go straight to Mat through OpenCV decode
-        mRgbMat = new Mat(mRgbBitmap.getHeight(), mRgbBitmap.getWidth(), CvType.CV_8UC3);
-        Utils.bitmapToMat(mRgbBitmap, mRgbMat);
+        if (mProcessingStartTime < 0)
+            mProcessingStartTime = (int) (System.currentTimeMillis());
 
-        // 1. Get the RGB image and find the bright quadrilateral
-        // TODO: project an eg. green square and just find that
-        //return findAndDrawScreen();
+        decodeImage(img);
 
-        // 2. Get the depth image from depth JPEG
-        getXmp();
+        // Phase 1: search for the brightest quadrilateral until found AND 5 seconds have past
+        if (mQuad == null || ((int) (System.currentTimeMillis()) - mProcessingStartTime) < 5000) {
+            findLargestBrightestQuad();
+            return highlightedQuad(mRgbMat);
+        }
+
+        if (mDepthProjectStartTime < 0)
+            mDepthProjectStartTime = (int) (System.currentTimeMillis());
+
+        // Phase 2: show the depth image from depth JPEG, with the quadrilateral shown
+        if ((int) (System.currentTimeMillis()) - mDepthProjectStartTime < 5000) {
+            try {
+                ByteBuffer depthJpeg = (new JpegParser(mImageData)).getDepthMap();
+                Bitmap bitmap = BitmapFactory.decodeByteArray(depthJpeg.array(), depthJpeg.arrayOffset(), depthJpeg.limit());
+
+                Mat depthMat = new Mat(bitmap.getHeight(), bitmap.getWidth(), CvType.CV_8UC3);
+                Utils.bitmapToMat(bitmap, depthMat);
+                return highlightedQuad(depthMat);
+            } catch (JpegParser.JpegMarkerNotFound jpegMarkerNotFound) {
+                jpegMarkerNotFound.printStackTrace();
+            } catch (JpegParser.DepthImageNotFound depthImageNotFound) {
+                depthImageNotFound.printStackTrace();
+            }
+        }
+
+        // TODO: For faster depth imaging, feature match against the depth image in the Depth16
+        // image and get a transform between the two
+
+        // Phase 3: Zoom/warp just the screen to show
+        // getPerspectiveTransform() https://docs.opencv.org/3.4.10/da/d54/group__imgproc__transform.html#ga15302cbff82bdcddb70158a58b73d981
         return null;
 
-        // 3. Find a match for the depth image in the Depth16 image
-        // 4. determine the co-ordinates of the depth16 image, which is where we want to trim
-        // our depth to
-
-        // useful..?
-        // getPerspectiveTransform() https://docs.opencv.org/3.4.10/da/d54/group__imgproc__transform.html#ga15302cbff82bdcddb70158a58b73d981
-        // drawChessBoardCorners
-
-        // TODO: get depth; Exif reader -> TAG_XMP -> parse
     }
 
     public int requiredInputFormat() {
         return ImageFormat.DEPTH_JPEG;
     }
 
-    private Bitmap findAndDrawScreen() {
-        MatOfPoint2f quad2f = findLargestBrightestQuad();
-        if(quad2f == null)
+    private void decodeImage(Image img) {
+        ByteBuffer buffer = img.getPlanes()[0].getBuffer();
+        mImageData = new byte[buffer.remaining()];
+        buffer.get(mImageData);
+        mRgbBitmap = BitmapFactory.decodeByteArray(mImageData, 0, mImageData.length);
+        img.close();
+
+        // TODO: there may be a way to go straight to Mat through OpenCV decode
+        mRgbMat = new Mat(mRgbBitmap.getHeight(), mRgbBitmap.getWidth(), CvType.CV_8UC3);
+        Utils.bitmapToMat(mRgbBitmap, mRgbMat);
+    }
+
+    private Bitmap highlightedQuad(Mat baseImage) {
+        if (mQuad == null)
             return null;
+
+        MatOfPoint2f quad2f = new MatOfPoint2f();
+        double scale = ((double) baseImage.width()) / mRgbMat.width();
+        Core.multiply(mQuad, new Scalar(scale, scale), quad2f);
 
         MatOfPoint quad = new MatOfPoint();
         quad2f.convertTo(quad, CvType.CV_32S);
 
         List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
         contours.add(quad);
-        Bitmap resultBmp = Bitmap.createBitmap(mRgbMat.width(), mRgbMat.height(), ARGB_8888);
-        Imgproc.drawContours(mRgbMat, contours, 0, new Scalar(0, 255, 0), 5);
-        Utils.matToBitmap(mRgbMat, resultBmp);
+
+        Imgproc.drawContours(baseImage, contours, 0, new Scalar(0, 255, 0), 5);
+        Bitmap resultBmp = Bitmap.createBitmap(baseImage.width(), baseImage.height(), ARGB_8888);
+        Utils.matToBitmap(baseImage, resultBmp);
         return resultBmp;
     }
 
@@ -105,8 +145,8 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
 
         // blur and downsample
         int SIZE_REDUCTION = 4;
-        Imgproc.GaussianBlur(gray8, gray8, new Size(31,31), 0);
-        Imgproc.resize(gray8, gray8, new Size(gray8.width()/SIZE_REDUCTION,gray8.height()/SIZE_REDUCTION));
+        Imgproc.GaussianBlur(gray8, gray8, new Size(31, 31), 0);
+        Imgproc.resize(gray8, gray8, new Size(gray8.width() / SIZE_REDUCTION, gray8.height() / SIZE_REDUCTION));
 
         // find the quadrilaterals
         List<MatOfPoint2f> quads = findQuadContours(gray8);
@@ -114,19 +154,21 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
         // find the biggest
         MatOfPoint2f largestSquare = null;
         double largestSquareArea = 0;
-        for(int i = 0; i < quads.size(); i++) {
+        for (int i = 0; i < quads.size(); i++) {
             MatOfPoint2f quad = quads.get(i);
             double area = Math.abs(Imgproc.contourArea(quad));
-            if(area > largestSquareArea) {
+            if (area > largestSquareArea) {
                 largestSquare = quad;
                 largestSquareArea = area;
             }
         }
 
         MatOfPoint2f rescaled = new MatOfPoint2f();
-        if(largestSquare != null) {
+        if (largestSquare != null) {
             Core.multiply(largestSquare, new Scalar(SIZE_REDUCTION, SIZE_REDUCTION), largestSquare);
         }
+
+        mQuad = largestSquare;
         return largestSquare;
     }
 
@@ -135,7 +177,7 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
 
         // the projection should be by far the brightest area - use two high thresholds
         int[] thresholds = new int[]{200, 250};
-        for(int i = 0; i < thresholds.length; i++) {
+        for (int i = 0; i < thresholds.length; i++) {
             Imgproc.threshold(gray8, gray8, thresholds[i], 255, 0);
 
             List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
@@ -167,7 +209,7 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
         Mat hsv = new Mat(mRgbMat.height(), mRgbMat.width(), CV_8UC3);
         Imgproc.cvtColor(mRgbMat, hsv, Imgproc.COLOR_BGR2HSV);
         List<Mat> splitMat = new ArrayList<Mat>(3);
-        split(hsv,splitMat);
+        split(hsv, splitMat);
         Mat gray8 = splitMat.get(2);
         return gray8;
     }
@@ -181,12 +223,12 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
     }
 
     private Bitmap contourDebug2f(List<MatOfPoint2f> contours2f) {
-        if(contours2f.size() == 0)
+        if (contours2f.size() == 0)
             return null;
 
         List<MatOfPoint> contours = new ArrayList<>();
 
-        for(int i = 0; i < contours2f.size(); i++) {
+        for (int i = 0; i < contours2f.size(); i++) {
             MatOfPoint s = new MatOfPoint();
             contours2f.get(i).convertTo(s, CvType.CV_32S);
             contours.add(s);
@@ -196,54 +238,15 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
     }
 
     private Bitmap contourDebug(List<MatOfPoint> contours) {
-        if(contours.size() == 0)
+        if (contours.size() == 0)
             return null;
 
         Bitmap resultBmp = Bitmap.createBitmap(mRgbMat.width(), mRgbMat.height(), ARGB_8888);
         //Imgproc.drawContours(mRgbMat, contours, -1, new Scalar(0, 255, 0), 30);
-        for(int i = 0; i < contours.size(); i++) {
+        for (int i = 0; i < contours.size(); i++) {
             Imgproc.drawContours(mRgbMat, contours, i, new Scalar(0, 255, 0), 30);
         }
         Utils.matToBitmap(mRgbMat, resultBmp);
         return resultBmp;
-    }
-
-    private void getXmp() {
-        Metadata metadata = getExif();
-        Collection<XmpDirectory> xmpDirectories = metadata.getDirectoriesOfType(XmpDirectory.class);
-        for (XmpDirectory xmpDirectory : xmpDirectories) {
-            XMPMeta xmpMeta = xmpDirectory.getXMPMeta();
-            XMPIterator iterator = null;
-            try {
-                iterator = xmpMeta.iterator();
-            } catch (XMPException e) {
-                e.printStackTrace();
-            }
-            int largestStrLength = 0;
-            String path = "";
-            while (iterator.hasNext()) {
-                XMPPropertyInfo xmpPropertyInfo = (XMPPropertyInfo)iterator.next();
-                System.out.println(xmpPropertyInfo.getPath() + ":" + xmpPropertyInfo.getValue());
-                if(xmpPropertyInfo.getValue() != null && (xmpPropertyInfo.getValue().length() > largestStrLength)) {
-                    largestStrLength = xmpPropertyInfo.getValue().length();
-                    path = xmpPropertyInfo.getPath();
-                }
-            }
-            path = path + "a";
-        }
-    }
-
-    private Metadata getExif() {
-        Metadata metadata = null;
-        try {
-            metadata = ImageMetadataReader.readMetadata(
-                    new BufferedInputStream(new ByteArrayInputStream(mImageData)),
-                    mImageData.length);
-        } catch (ImageProcessingException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return metadata;
     }
 }
