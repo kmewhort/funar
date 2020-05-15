@@ -24,6 +24,7 @@ import org.opencv.core.Point;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
+import org.opencv.imgproc.Moments;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
@@ -54,10 +55,13 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
     private int mDepthProjectStartTime;
 
     private MatOfPoint2f mQuad;
+    private Mat mWarpMat;
 
     public CalibrateProjectionAreaProcessor() {
         mProcessingStartTime = -1;
         mDepthProjectStartTime = -1;
+        mQuad = null;
+        mWarpMat = null;
     }
 
     public Bitmap process(Image img) {
@@ -69,7 +73,7 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
         decodeImage(img);
 
         // Phase 1: search for the brightest quadrilateral until found AND 5 seconds have past
-        if (mQuad == null || ((int) (System.currentTimeMillis()) - mProcessingStartTime) < 5000) {
+        if (mQuad == null || ((int) (System.currentTimeMillis()) - mProcessingStartTime) < 8000) {
             findLargestBrightestQuad();
             return highlightedQuad(mRgbMat);
         }
@@ -79,27 +83,22 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
 
         // Phase 2: show the depth image from depth JPEG, with the quadrilateral shown
         if ((int) (System.currentTimeMillis()) - mDepthProjectStartTime < 5000) {
-            try {
-                ByteBuffer depthJpeg = (new JpegParser(mImageData)).getDepthMap();
-                Bitmap bitmap = BitmapFactory.decodeByteArray(depthJpeg.array(), depthJpeg.arrayOffset(), depthJpeg.limit());
-
-                Mat depthMat = new Mat(bitmap.getHeight(), bitmap.getWidth(), CvType.CV_8UC3);
-                Utils.bitmapToMat(bitmap, depthMat);
-                return highlightedQuad(depthMat);
-            } catch (JpegParser.JpegMarkerNotFound jpegMarkerNotFound) {
-                jpegMarkerNotFound.printStackTrace();
-            } catch (JpegParser.DepthImageNotFound depthImageNotFound) {
-                depthImageNotFound.printStackTrace();
-            }
+            return highlightedQuad(depthMatrix());
         }
 
         // TODO: For faster depth imaging, feature match against the depth image in the Depth16
         // image and get a transform between the two
 
-        // Phase 3: Zoom/warp just the screen to show
-        // getPerspectiveTransform() https://docs.opencv.org/3.4.10/da/d54/group__imgproc__transform.html#ga15302cbff82bdcddb70158a58b73d981
-        return null;
+        // Phase 3: Zoom/warp just the projected screen and show the depth there
+        Mat depth = depthMatrix();
+        if(mWarpMat == null)
+            calculatePerspectiveTransform(depth.width(), depth.height());
+        Mat warped = new Mat();
+        Imgproc.warpPerspective(depth, warped, mWarpMat, depth.size());
 
+        Bitmap resultBmp = Bitmap.createBitmap(warped.width(), warped.height(), ARGB_8888);
+        Utils.matToBitmap(warped, resultBmp);
+        return resultBmp;
     }
 
     public int requiredInputFormat() {
@@ -118,13 +117,27 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
         Utils.bitmapToMat(mRgbBitmap, mRgbMat);
     }
 
+    private Mat depthMatrix() {
+        try {
+            ByteBuffer depthJpeg = (new JpegParser(mImageData)).getDepthMap();
+            Bitmap bitmap = BitmapFactory.decodeByteArray(depthJpeg.array(), depthJpeg.arrayOffset(), depthJpeg.limit());
+
+            Mat depthMat = new Mat(bitmap.getHeight(), bitmap.getWidth(), CvType.CV_8UC3);
+            Utils.bitmapToMat(bitmap, depthMat);
+            return depthMat;
+        } catch (JpegParser.JpegMarkerNotFound jpegMarkerNotFound) {
+            jpegMarkerNotFound.printStackTrace();
+        } catch (JpegParser.DepthImageNotFound depthImageNotFound) {
+            depthImageNotFound.printStackTrace();
+        }
+        return null;
+    }
+
     private Bitmap highlightedQuad(Mat baseImage) {
         if (mQuad == null)
             return null;
 
-        MatOfPoint2f quad2f = new MatOfPoint2f();
-        double scale = ((double) baseImage.width()) / mRgbMat.width();
-        Core.multiply(mQuad, new Scalar(scale, scale), quad2f);
+        MatOfPoint2f quad2f = scaledQuad(baseImage.width(), baseImage.height());
 
         MatOfPoint quad = new MatOfPoint();
         quad2f.convertTo(quad, CvType.CV_32S);
@@ -136,6 +149,14 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
         Bitmap resultBmp = Bitmap.createBitmap(baseImage.width(), baseImage.height(), ARGB_8888);
         Utils.matToBitmap(baseImage, resultBmp);
         return resultBmp;
+    }
+
+    private MatOfPoint2f scaledQuad(double width, double height) {
+        MatOfPoint2f quad2f = new MatOfPoint2f();
+        double xScale = width / mRgbMat.width();
+        double yScale = height / mRgbMat.height();
+        Core.multiply(mQuad, new Scalar(xScale, yScale), quad2f);
+        return quad2f;
     }
 
     // based loosely on Karl Phillip: https://stackoverflow.com/questions/8667818/opencv-c-obj-c-detecting-a-sheet-of-paper-square-detection/14368605#14368605
@@ -202,6 +223,56 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
             }
         }
         return result;
+    }
+
+    private Mat calculatePerspectiveTransform(int targetWidth, int targetHeight) {
+        // based on https://stackoverflow.com/questions/40688491/opencv-getperspectivetransform-and-warpperspective-java
+
+        //calculate the center of mass of our contour image using moments
+        MatOfPoint2f quad2f = scaledQuad(targetWidth, targetHeight);
+        Moments moment = Imgproc.moments(quad2f);
+        int x = (int) (moment.get_m10() / moment.get_m00());
+        int y = (int) (moment.get_m01() / moment.get_m00());
+
+        // sort points relative to the centre of mass
+        Point[] sortedPoints = new Point[4];
+
+        double[] data;
+        int count = 0;
+        for(int i=0; i < quad2f.rows(); i++){
+            data = quad2f.get(i, 0);
+            double datax = data[0];
+            double datay = data[1];
+            if(datax < x && datay < y){
+                sortedPoints[0]=new Point(datax,datay);
+                count++;
+            }else if(datax > x && datay < y){
+                sortedPoints[1]=new Point(datax,datay);
+                count++;
+            }else if (datax < x && datay > y){
+                sortedPoints[2]=new Point(datax,datay);
+                count++;
+            }else if (datax > x && datay > y){
+                sortedPoints[3]=new Point(datax,datay);
+                count++;
+            }
+        }
+
+        MatOfPoint2f src = new MatOfPoint2f(
+                sortedPoints[0],
+                sortedPoints[1],
+                sortedPoints[2],
+                sortedPoints[3]);
+
+        MatOfPoint2f dst = new MatOfPoint2f(
+                new Point(0, 0),
+                new Point(targetWidth-1,0),
+                new Point(0,targetHeight-1),
+                new Point(targetWidth-1,targetHeight-1)
+        );
+
+        mWarpMat = Imgproc.getPerspectiveTransform(src,dst);
+        return mWarpMat;
     }
 
     private Mat hsvValueChannel() {
