@@ -46,10 +46,13 @@ import static org.opencv.core.CvType.CV_8U;
 import static org.opencv.core.CvType.CV_8UC3;
 import static org.opencv.imgproc.Imgproc.medianBlur;
 
-public class CalibrateProjectionAreaProcessor implements ImageProcessor {
+public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
+    private static final int PROJECTOR_FRAME_LATENCY = 10;
+
     private byte[] mImageData;
     private Bitmap mRgbBitmap;
     private Mat mRgbMat;
+    private Mat mDepthMat;
 
     private int mProcessingStartTime;
     private int mDepthProjectStartTime;
@@ -57,55 +60,87 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
     private MatOfPoint2f mQuad;
     private Mat mWarpMat;
 
-    public CalibrateProjectionAreaProcessor() {
-        mProcessingStartTime = -1;
-        mDepthProjectStartTime = -1;
-        mQuad = null;
-        mWarpMat = null;
+    private int mWhiteFlashCount;
+
+    private boolean mVisualCallibration;
+
+    public DepthJpegProjectionAreaProcessor() {
+        restartCallibration();
     }
 
-    public Bitmap process(Image img) {
-        // TODO: flag to turn UI for calibration on/off
+    public Mat process(Image img) {
+        decodeRgbImage(img);
+        decodeDepthImage();
 
-        if (mProcessingStartTime < 0)
-            mProcessingStartTime = (int) (System.currentTimeMillis());
-
-        decodeImage(img);
-
-        // Phase 1: search for the brightest quadrilateral until found AND 5 seconds have past
-        if (mQuad == null || ((int) (System.currentTimeMillis()) - mProcessingStartTime) < 8000) {
-            findLargestBrightestQuad();
-            return highlightedQuad(mRgbMat);
+        // ensure we're flashing a white screen
+        if(mWhiteFlashCount++ < PROJECTOR_FRAME_LATENCY) {
+            return whiteFlashMat();
         }
 
-        if (mDepthProjectStartTime < 0)
-            mDepthProjectStartTime = (int) (System.currentTimeMillis());
+        if(!mVisualCallibration) {
+            // callibrate if we haven't figured out our projection yet
+            if(mWarpMat == null) {
 
-        // Phase 2: show the depth image from depth JPEG, with the quadrilateral shown
-        if ((int) (System.currentTimeMillis()) - mDepthProjectStartTime < 5000) {
-            return highlightedQuad(depthMatrix());
+                findLargestBrightestQuad();
+                if (mQuad == null)
+                    return whiteFlashMat(); //try again next frame
+
+                calculatePerspectiveTransform(mDepthMat.width(), mDepthMat.height());
+            }
+        } else {
+            // timed stages of callibration that we sho on screen
+            if (mProcessingStartTime < 0)
+                mProcessingStartTime = (int) (System.currentTimeMillis());
+
+            // Phase 1: search for the brightest quadrilateral until found AND 5 seconds have past
+            if (mQuad == null || ((int) (System.currentTimeMillis()) - mProcessingStartTime) < 8000) {
+                findLargestBrightestQuad();
+                return highlightedQuad(mRgbMat);
+            }
+
+            if (mDepthProjectStartTime < 0)
+                mDepthProjectStartTime = (int) (System.currentTimeMillis());
+
+            // Phase 2: show the depth image from depth JPEG, with the quadrilateral shown
+            if ((int) (System.currentTimeMillis()) - mDepthProjectStartTime < 5000) {
+                return highlightedQuad(mDepthMat);
+            }
+
+            // TODO: For faster depth imaging, feature match against the depth image in the Depth16
+            // image and get a transform between the two
+
+            // Phase 3: Zoom/warp just the projected screen and show the depth there
+            if (mWarpMat == null)
+                calculatePerspectiveTransform(mDepthMat.width(), mDepthMat.height());
         }
 
-        // TODO: For faster depth imaging, feature match against the depth image in the Depth16
-        // image and get a transform between the two
-
-        // Phase 3: Zoom/warp just the projected screen and show the depth there
-        Mat depth = depthMatrix();
-        if(mWarpMat == null)
-            calculatePerspectiveTransform(depth.width(), depth.height());
         Mat warped = new Mat();
-        Imgproc.warpPerspective(depth, warped, mWarpMat, depth.size());
-
-        Bitmap resultBmp = Bitmap.createBitmap(warped.width(), warped.height(), ARGB_8888);
-        Utils.matToBitmap(warped, resultBmp);
-        return resultBmp;
+        Imgproc.warpPerspective(mDepthMat, warped, mWarpMat, mDepthMat.size());
+        return warped;
     }
 
     public int requiredInputFormat() {
         return ImageFormat.DEPTH_JPEG;
     }
 
-    private void decodeImage(Image img) {
+    public boolean isCallibrated() {
+        return mWarpMat != null;
+    }
+
+    public void setVisualCallibrationMode(boolean visual) {
+        mVisualCallibration = visual;
+    }
+
+    private void restartCallibration() {
+        mProcessingStartTime = -1;
+        mDepthProjectStartTime = -1;
+        mQuad = null;
+        mWarpMat = null;
+        mVisualCallibration = false;
+        mWhiteFlashCount = 0;
+    }
+
+    private void decodeRgbImage(Image img) {
         ByteBuffer buffer = img.getPlanes()[0].getBuffer();
         mImageData = new byte[buffer.remaining()];
         buffer.get(mImageData);
@@ -117,23 +152,21 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
         Utils.bitmapToMat(mRgbBitmap, mRgbMat);
     }
 
-    private Mat depthMatrix() {
+    private void decodeDepthImage() {
         try {
             ByteBuffer depthJpeg = (new JpegParser(mImageData)).getDepthMap();
             Bitmap bitmap = BitmapFactory.decodeByteArray(depthJpeg.array(), depthJpeg.arrayOffset(), depthJpeg.limit());
 
-            Mat depthMat = new Mat(bitmap.getHeight(), bitmap.getWidth(), CvType.CV_8UC3);
-            Utils.bitmapToMat(bitmap, depthMat);
-            return depthMat;
+            mDepthMat = new Mat(bitmap.getHeight(), bitmap.getWidth(), CvType.CV_8UC3);
+            Utils.bitmapToMat(bitmap, mDepthMat);
         } catch (JpegParser.JpegMarkerNotFound jpegMarkerNotFound) {
             jpegMarkerNotFound.printStackTrace();
         } catch (JpegParser.DepthImageNotFound depthImageNotFound) {
             depthImageNotFound.printStackTrace();
         }
-        return null;
     }
 
-    private Bitmap highlightedQuad(Mat baseImage) {
+    private Mat highlightedQuad(Mat baseImage) {
         if (mQuad == null)
             return null;
 
@@ -146,9 +179,7 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
         contours.add(quad);
 
         Imgproc.drawContours(baseImage, contours, 0, new Scalar(0, 255, 0), 5);
-        Bitmap resultBmp = Bitmap.createBitmap(baseImage.width(), baseImage.height(), ARGB_8888);
-        Utils.matToBitmap(baseImage, resultBmp);
-        return resultBmp;
+        return baseImage;
     }
 
     private MatOfPoint2f scaledQuad(double width, double height) {
@@ -306,6 +337,11 @@ public class CalibrateProjectionAreaProcessor implements ImageProcessor {
         }
 
         return contourDebug(contours);
+    }
+
+    private Mat whiteFlashMat() {
+        // align to the depth image height/weight; it's smaller
+        return new Mat(mDepthMat.height(), mDepthMat.width(), CvType.CV_8UC3, new Scalar(255,255,255));
     }
 
     private Bitmap contourDebug(List<MatOfPoint> contours) {

@@ -4,7 +4,6 @@ import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
-import android.graphics.ImageFormat;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -38,6 +37,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.opencv.android.OpenCVLoader;
+import org.opencv.android.Utils;
+import org.opencv.core.Mat;
+
+import static android.graphics.Bitmap.Config.ARGB_8888;
 
 // adapted from https://inducesmile.com/android/android-camera2-api-example-tutorial/
 public class CameraController extends AppCompatActivity {
@@ -75,7 +78,9 @@ public class CameraController extends AppCompatActivity {
     private boolean mBitmapConsumed;
     private int mFrameCount;
 
-    private ImageProcessor mCurrentProcessor;
+    private ImageProcessor mCurrentDepthProcessor;
+    private ImageProcessor mCurrentEffectProcessor;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -98,8 +103,8 @@ public class CameraController extends AppCompatActivity {
 
         mFrameCount = 0;
 
-        //mCurrentProcessor = new DepthImageProcessor();
-        mCurrentProcessor = new CalibrateProjectionAreaProcessor();
+        //mCurrentDepthProcessor = new Depth16ImageProcessor();
+        mCurrentDepthProcessor = new DepthJpegProjectionAreaProcessor();
 
         openCamera();
     }
@@ -163,7 +168,7 @@ public class CameraController extends AppCompatActivity {
             ImageReader reader = ImageReader.newInstance(
                     imageDimension.getWidth(),
                     imageDimension.getHeight(),
-                    mCurrentProcessor.requiredInputFormat(),
+                    mCurrentDepthProcessor.requiredInputFormat(),
                     1
             );
 
@@ -226,12 +231,23 @@ public class CameraController extends AppCompatActivity {
                 if (img == null) // not sure why this happens
                     return;
 
-                Bitmap imgBitmap = mCurrentProcessor.process(img);
+                Mat depth = mCurrentDepthProcessor.process(img);
+                img.close();
+
+                Mat output;
+                if(!mCurrentDepthProcessor.isCallibrated()) {
+                    output = depth;
+                } else {
+                    output = (new ContourGenerator()).process(depth);
+                }
                 img.close();
 
                 // show and re-capture
-                if(imgBitmap != null)
-                    showBitmap(imgBitmap);
+                if(output != null) {
+                    Bitmap resultBmp = Bitmap.createBitmap(output.width(), output.height(), ARGB_8888);
+                    Utils.matToBitmap(output, resultBmp);
+                    showBitmap(resultBmp);
+                }
 
                 try {
                     mCaptureSession.capture(mCaptureRequest, mCaptureListener, mBackgroundHandler);

@@ -31,11 +31,11 @@ import static org.opencv.core.CvType.CV_16UC1;
 import static org.opencv.core.CvType.CV_8U;
 import static org.opencv.core.CvType.CV_8UC3;
 
-public class DepthImageProcessor implements ImageProcessor {
+public class Depth16ImageProcessor implements ImageProcessor {
     Mat mMat;
     boolean mNormalize;
 
-    public Bitmap process(Image img) {
+    public Mat process(Image img) {
         // load the buffers and convert to OpenCV
         Image.Plane[] planes = img.getPlanes();
         ByteBuffer buffer = planes[0].getBuffer();
@@ -46,82 +46,20 @@ public class DepthImageProcessor implements ImageProcessor {
         mMat = new Mat();
         bitwise_and(raw, (new Mat(1, 1, CV_16UC1, new Scalar(0x1FFF))), mMat);
 
-        mNormalize = true;
-
         //return contoursBmp();
-        return gray8Bmp();
+        return gray16();
+    }
+
+    public boolean isCallibrated() {
+        return true;
     }
 
     public int requiredInputFormat() {
         return ImageFormat.DEPTH16;
     }
 
-    public void setNormalize(boolean norm) {
-        mNormalize = norm;
-    }
-
-    public boolean getNormalize() {
-        return mNormalize;
-    }
-
     protected Mat gray16() {
         return mMat;
-    }
-
-    protected Mat gray8() {
-        Mat gray8 = new Mat(mMat.height(), mMat.width(), CV_8U);
-        if(mNormalize)
-          normalize(gray16(), gray8, 0, 255, NORM_MINMAX, CV_8U);
-        else
-          gray16().convertTo(gray8, CV_8U, 1/256.0);
-        return gray8;
-    }
-
-    protected Bitmap gray8Bmp() {
-        Mat rgbMat = new Mat();
-        Imgproc.cvtColor(gray8(), rgbMat, Imgproc.COLOR_GRAY2RGBA);
-        Bitmap resultBmp = Bitmap.createBitmap(rgbMat.width(), rgbMat.height(), ARGB_8888);
-        Utils.matToBitmap(rgbMat, resultBmp);
-        return resultBmp;
-    }
-
-    protected Bitmap colormap8Bmp() {
-        Mat rgbMat = new Mat();
-        Imgproc.applyColorMap(gray8(), rgbMat, Imgproc.COLORMAP_JET);
-        Bitmap resultBmp = Bitmap.createBitmap(rgbMat.width(), rgbMat.height(), ARGB_8888);
-        Utils.matToBitmap(rgbMat, resultBmp);
-        return resultBmp;
-    }
-
-    protected Mat contours() {
-        // TODO: use gray16 for generating contours; and without normalization?
-        Mat gray = gray8();
-
-        Mat result = new Mat(mMat.height(), mMat.width(), CV_8UC3);
-
-        // start with a colormap
-        Imgproc.applyColorMap(gray, result, Imgproc.COLORMAP_JET);
-
-        // for each spread of 8 between 0 and 256
-        for(int i = 0; i < 32; i++) {
-            Mat threshold = new Mat();
-            Imgproc.threshold(gray, threshold, i * 8, (i + 1) * 8, 0);
-
-            List<MatOfPoint> contours = new ArrayList();
-            Mat hierarchy = new Mat();
-            Imgproc.findContours(threshold, contours, hierarchy, Imgproc.RETR_TREE, Imgproc.CHAIN_APPROX_SIMPLE);
-
-            // draw all contours
-            Imgproc.drawContours(result, contours, -1, new Scalar(0, 255, 0), 1);
-        }
-        return result;
-    }
-
-    protected Bitmap contoursBmp() {
-        Mat mat = contours();
-        Bitmap resultBmp = Bitmap.createBitmap(mat.width(), mat.height(), ARGB_8888);
-        Utils.matToBitmap(mat, resultBmp);
-        return resultBmp;
     }
 
     protected Bitmap gray8BmpBruteForce(Image image) {

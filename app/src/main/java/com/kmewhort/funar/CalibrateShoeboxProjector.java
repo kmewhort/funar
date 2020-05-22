@@ -4,8 +4,10 @@ import android.graphics.Bitmap;
 import android.graphics.ImageFormat;
 import android.media.Image;
 
+import org.opencv.core.Mat;
+
 public class CalibrateShoeboxProjector implements ImageProcessor {
-    public Bitmap process(Image img) {
+    public Mat process(Image img) {
         // we want to:
         // 1. Scan a red line on the screen from left to right;
         // 2. Simultaneously scan a blue line on the screen from top to bottom
@@ -18,5 +20,9 @@ public class CalibrateShoeboxProjector implements ImageProcessor {
 
     public int requiredInputFormat() {
         return ImageFormat.JPEG;
+    }
+
+    public boolean isCallibrated() {
+        return false;
     }
 }
