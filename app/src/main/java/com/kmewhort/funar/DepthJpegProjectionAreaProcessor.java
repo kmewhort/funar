@@ -47,7 +47,8 @@ import static org.opencv.core.CvType.CV_8UC3;
 import static org.opencv.imgproc.Imgproc.medianBlur;
 
 public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
-    private static final int PROJECTOR_FRAME_LATENCY = 10;
+    private static final int RECALIBRATE_FRAME_COUNT = 30;
+    private static final int PROJECTOR_FRAME_LATENCY = 2;
 
     private byte[] mImageData;
     private Bitmap mRgbBitmap;
@@ -64,6 +65,8 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
 
     private boolean mVisualCallibration;
 
+    private int mFrameCount;
+
     public DepthJpegProjectionAreaProcessor() {
         restartCallibration();
     }
@@ -71,6 +74,9 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
     public Mat process(Image img) {
         decodeRgbImage(img);
         decodeDepthImage();
+        if(++mFrameCount % RECALIBRATE_FRAME_COUNT == 0) {
+            restartCallibration();
+        }
 
         // ensure we're flashing a white screen
         if(mWhiteFlashCount++ < PROJECTOR_FRAME_LATENCY) {
@@ -138,6 +144,7 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
         mWarpMat = null;
         mVisualCallibration = false;
         mWhiteFlashCount = 0;
+        mFrameCount = 0;
     }
 
     private void decodeRgbImage(Image img) {
@@ -249,18 +256,14 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
                         arclength * 0.02,
                         true);
 
-                if (approx.rows() == 4)
+                if (approx.rows() == 4 && (sortQuadPoints(approx) != null))
                     result.add(approx);
             }
         }
         return result;
     }
 
-    private Mat calculatePerspectiveTransform(int targetWidth, int targetHeight) {
-        // based on https://stackoverflow.com/questions/40688491/opencv-getperspectivetransform-and-warpperspective-java
-
-        //calculate the center of mass of our contour image using moments
-        MatOfPoint2f quad2f = scaledQuad(targetWidth, targetHeight);
+    private Point[] sortQuadPoints(MatOfPoint2f quad2f) {
         Moments moment = Imgproc.moments(quad2f);
         int x = (int) (moment.get_m10() / moment.get_m00());
         int y = (int) (moment.get_m01() / moment.get_m00());
@@ -288,6 +291,20 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
                 count++;
             }
         }
+
+        for(int i=0; i < sortedPoints.length; i++) {
+            if(sortedPoints[i] == null)
+                return null;
+        }
+
+        return sortedPoints;
+    }
+
+    private Mat calculatePerspectiveTransform(int targetWidth, int targetHeight) {
+        // based on https://stackoverflow.com/questions/40688491/opencv-getperspectivetransform-and-warpperspective-java
+        MatOfPoint2f quad2f = scaledQuad(targetWidth, targetHeight);
+
+        Point[] sortedPoints = sortQuadPoints(quad2f);
 
         MatOfPoint2f src = new MatOfPoint2f(
                 sortedPoints[0],

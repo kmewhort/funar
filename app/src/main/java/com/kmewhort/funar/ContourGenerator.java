@@ -28,7 +28,7 @@ public class ContourGenerator {
        // convert the 3-channel gray input to gray, normalized
         mMat = new Mat();
         // TODO: use 16 bit?
-        Imgproc.cvtColor(gray3Input, mMat, Imgproc.COLOR_GRAY2RGB);
+        Imgproc.cvtColor(gray3Input, mMat, Imgproc.COLOR_RGB2GRAY);
         normalize(mMat, mMat, 0, 255, NORM_MINMAX, CV_8U);
 
         return contours();
