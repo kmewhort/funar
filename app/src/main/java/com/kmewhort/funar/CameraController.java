@@ -46,7 +46,7 @@ import org.opencv.core.Mat;
 import static android.graphics.Bitmap.Config.ARGB_8888;
 
 // adapted from https://inducesmile.com/android/android-camera2-api-example-tutorial/
-public class CameraController extends AppCompatActivity {
+public class CameraController extends MainFullscreenActivityBase {
     private static final String TAG = "CameraController";
     private ImageView mainView;
     private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
@@ -94,8 +94,8 @@ public class CameraController extends AppCompatActivity {
         mStereoImageProcessor = new StereoImageProcessor(this.getApplicationContext());
 
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.camera_layout);
-        mainView = (ImageView) findViewById(R.id.main_view);
+
+        mainView = (ImageView) findViewById(R.id.fullscreen_content);
         assert mainView != null;
 
         // physical camera stream config
@@ -132,8 +132,6 @@ public class CameraController extends AppCompatActivity {
                 return super.onOptionsItemSelected(item);
         }
     }
-
-
 
     private final CameraDevice.StateCallback stateCallback = new CameraDevice.StateCallback() {
         @Override
