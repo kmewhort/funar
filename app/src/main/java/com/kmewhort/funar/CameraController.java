@@ -76,7 +76,6 @@ public class CameraController extends MainFullscreenActivityBase {
     private Handler mBackgroundHandler;
     private HandlerThread mBackgroundThread;
     private HandlerExecutor mBackgroundExecutor;
-    private StereoImageProcessor mStereoImageProcessor;
 
     private boolean mBitmapConsumed;
     private int mFrameCount;
@@ -89,9 +88,6 @@ public class CameraController extends MainFullscreenActivityBase {
     protected void onCreate(Bundle savedInstanceState) {
         // load OpenCV
         OpenCVLoader.initDebug();
-
-        // load stereo image processor (initializes RenderScript)
-        mStereoImageProcessor = new StereoImageProcessor(this.getApplicationContext());
 
         super.onCreate(savedInstanceState);
 

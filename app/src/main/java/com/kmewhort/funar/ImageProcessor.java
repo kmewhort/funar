@@ -8,6 +8,9 @@ import org.opencv.core.Mat;
 
 public interface ImageProcessor {
     Mat process(Image img);
+
+    void recallibrate();
+
     boolean isCallibrated();
     int requiredInputFormat();
 }
