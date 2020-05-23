@@ -64,29 +64,32 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
     private int mWhiteFlashCount;
 
     private boolean mVisualCallibration;
+    private boolean mAutoCallibration;
 
     private int mFrameCount;
 
     public DepthJpegProjectionAreaProcessor() {
+        mVisualCallibration = true;
+        mAutoCallibration = false;
         restartCallibration();
     }
 
     public Mat process(Image img) {
         decodeRgbImage(img);
         decodeDepthImage();
-        if(++mFrameCount % RECALIBRATE_FRAME_COUNT == 0) {
+        if(++mFrameCount % RECALIBRATE_FRAME_COUNT == 0 && mAutoCallibration) {
             restartCallibration();
         }
 
-        // ensure we're flashing a white screen
-        if(mWhiteFlashCount++ < PROJECTOR_FRAME_LATENCY) {
-            return whiteFlashMat();
-        }
-
         if(!mVisualCallibration) {
+            // start off flashing a white square
+            // TODO: would be nicer to just border the regular output
+            if(mWhiteFlashCount++ < PROJECTOR_FRAME_LATENCY) {
+                return whiteFlashMat();
+            }
+
             // callibrate if we haven't figured out our projection yet
             if(mWarpMat == null) {
-
                 findLargestBrightestQuad();
                 if (mQuad == null)
                     return whiteFlashMat(); //try again next frame
@@ -99,16 +102,20 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
                 mProcessingStartTime = (int) (System.currentTimeMillis());
 
             // Phase 1: search for the brightest quadrilateral until found AND 5 seconds have past
-            if (mQuad == null || ((int) (System.currentTimeMillis()) - mProcessingStartTime) < 8000) {
+            if (mQuad == null || ((int) (System.currentTimeMillis()) - mProcessingStartTime) < 5000) {
                 findLargestBrightestQuad();
-                return highlightedQuad(mRgbMat);
+                Mat output = addWhiteBorder(mRgbMat);
+                if(mQuad == null)
+                    return output;
+                else
+                    return highlightedQuad(output);
             }
 
             if (mDepthProjectStartTime < 0)
                 mDepthProjectStartTime = (int) (System.currentTimeMillis());
 
             // Phase 2: show the depth image from depth JPEG, with the quadrilateral shown
-            if ((int) (System.currentTimeMillis()) - mDepthProjectStartTime < 5000) {
+            if ((int) (System.currentTimeMillis()) - mDepthProjectStartTime < 1000) {
                 return highlightedQuad(mDepthMat);
             }
 
@@ -116,8 +123,15 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
             // image and get a transform between the two
 
             // Phase 3: Zoom/warp just the projected screen and show the depth there
-            if (mWarpMat == null)
+            if (mWarpMat == null) {
                 calculatePerspectiveTransform(mDepthMat.width(), mDepthMat.height());
+                // if this fails (hitting this very sporadically, stemming from a failure
+                // to find the sorted points), back to square 1
+                if(mWarpMat == null) {
+                    restartCallibration();
+                    return null;
+                }
+            }
         }
 
         Mat warped = new Mat();
@@ -142,7 +156,6 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
         mDepthProjectStartTime = -1;
         mQuad = null;
         mWarpMat = null;
-        mVisualCallibration = false;
         mWhiteFlashCount = 0;
         mFrameCount = 0;
     }
@@ -305,6 +318,8 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
         MatOfPoint2f quad2f = scaledQuad(targetWidth, targetHeight);
 
         Point[] sortedPoints = sortQuadPoints(quad2f);
+        if(sortedPoints == null)
+            return null;
 
         MatOfPoint2f src = new MatOfPoint2f(
                 sortedPoints[0],
@@ -359,6 +374,19 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
     private Mat whiteFlashMat() {
         // align to the depth image height/weight; it's smaller
         return new Mat(mDepthMat.height(), mDepthMat.width(), CvType.CV_8UC3, new Scalar(255,255,255));
+    }
+
+    private Mat addWhiteBorder(Mat input) {
+        Point[] imageCorners = new Point[4];
+        imageCorners[0] = new Point(0,0);
+        imageCorners[1] = new Point(input.width()-1, 0);
+        imageCorners[2] = new Point(input.width()-1, input.height()-1);
+        imageCorners[3] = new Point(0, input.height()-1);
+
+        List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+        contours.add(new MatOfPoint(imageCorners));
+        Imgproc.drawContours(input, contours, 0, new Scalar(255, 255, 255), 200);
+        return input;
     }
 
     private Bitmap contourDebug(List<MatOfPoint> contours) {

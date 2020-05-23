@@ -1,4 +1,10 @@
 <resources>
     <string name="app_name">Funar</string>
-    <string name="take_picture">Take picture</string>
+    <string name="callibrate">Callibrate</string>
+    <string name="enable_auto_callibrate">Enable Auto Callibrate</string>
+    <string name="disable_auto_callibrate">Disable Auto Callibrate</string>
+
+    <string name="title_activity_temp_fullscreen">TempFullscreenActivity</string>
+    <string name="dummy_button">Dummy Button</string>
+    <string name="dummy_content">DUMMY\nCONTENT</string>
 </resources>

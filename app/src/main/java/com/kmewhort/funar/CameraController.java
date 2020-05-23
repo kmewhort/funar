@@ -29,6 +29,9 @@ import androidx.appcompat.app.AppCompatActivity;
 import android.util.Log;
 import android.util.Size;
 import android.util.SparseIntArray;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.Surface;
 import android.widget.ImageView;
 import android.widget.Toast;
@@ -108,6 +111,29 @@ public class CameraController extends AppCompatActivity {
 
         openCamera();
     }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.menu, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        // Handle item selection
+        switch (item.getItemId()) {
+            case R.id.callibrate:
+                return true;
+            case R.id.enable_auto_callibrate:
+                return true;
+            case R.id.disable_auto_callibrate:
+            default:
+                return super.onOptionsItemSelected(item);
+        }
+    }
+
+
 
     private final CameraDevice.StateCallback stateCallback = new CameraDevice.StateCallback() {
         @Override

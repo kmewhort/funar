@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/callibrate"
+        android:title="@string/callibrate" />
+    <item android:id="@+id/enable_auto_callibrate"
+        android:title="@string/enable_auto_callibrate" />
+    <item android:id="@+id/disable_auto_callibrate"
+        android:title="@string/disable_auto_callibrate" />
+</menu>
