@@ -47,8 +47,11 @@ import static org.opencv.core.CvType.CV_8UC3;
 import static org.opencv.imgproc.Imgproc.medianBlur;
 
 public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
-    private static final int RECALIBRATE_FRAME_COUNT = 30;
+    private static final int RECALIBRATE_FRAME_COUNT = 20;
     private static final int PROJECTOR_FRAME_LATENCY = 2;
+
+    // downsample scale for finding the quad
+    private static final int SIZE_REDUCTION = 2;
 
     private byte[] mImageData;
     private Bitmap mRgbBitmap;
@@ -59,6 +62,7 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
     private int mDepthProjectStartTime;
 
     private MatOfPoint2f mQuad;
+    private MatOfPoint2f mScaledDownQuad;
     private Mat mWarpMat;
 
     private int mWhiteFlashCount;
@@ -71,14 +75,14 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
     public DepthJpegProjectionAreaProcessor() {
         mVisualCallibration = true;
         mAutoCallibration = false;
-        restartCallibration();
+        recallibrate();
     }
 
     public Mat process(Image img) {
         decodeRgbImage(img);
         decodeDepthImage();
         if(++mFrameCount % RECALIBRATE_FRAME_COUNT == 0 && mAutoCallibration) {
-            restartCallibration();
+            recallibrate();
         }
 
         if(!mVisualCallibration) {
@@ -128,7 +132,7 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
                 // if this fails (hitting this very sporadically, stemming from a failure
                 // to find the sorted points), back to square 1
                 if(mWarpMat == null) {
-                    restartCallibration();
+                    recallibrate();
                     return null;
                 }
             }
@@ -147,17 +151,26 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
         return mWarpMat != null;
     }
 
-    public void setVisualCallibrationMode(boolean visual) {
-        mVisualCallibration = visual;
-    }
-
-    private void restartCallibration() {
+    public void recallibrate() {
         mProcessingStartTime = -1;
         mDepthProjectStartTime = -1;
         mQuad = null;
         mWarpMat = null;
         mWhiteFlashCount = 0;
         mFrameCount = 0;
+    }
+
+    public void setAutoCallibrate(boolean enable) {
+        mAutoCallibration = enable;
+        mVisualCallibration = !enable;
+    }
+
+    public boolean getAutoCallibrate() {
+        return mAutoCallibration;
+    }
+
+    public void setVisualCallibrationMode(boolean visual) {
+        mVisualCallibration = visual;
     }
 
     private void decodeRgbImage(Image img) {
@@ -203,6 +216,11 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
     }
 
     private MatOfPoint2f scaledQuad(double width, double height) {
+        if(width == mRgbMat.width())
+            return mQuad;
+        else if(width == mRgbMat.width()/SIZE_REDUCTION)
+            return mScaledDownQuad;
+
         MatOfPoint2f quad2f = new MatOfPoint2f();
         double xScale = width / mRgbMat.width();
         double yScale = height / mRgbMat.height();
@@ -216,7 +234,6 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
         Mat gray8 = this.hsvValueChannel();
 
         // blur and downsample
-        int SIZE_REDUCTION = 4;
         Imgproc.GaussianBlur(gray8, gray8, new Size(31, 31), 0);
         Imgproc.resize(gray8, gray8, new Size(gray8.width() / SIZE_REDUCTION, gray8.height() / SIZE_REDUCTION));
 
@@ -235,9 +252,11 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
             }
         }
 
+        mScaledDownQuad = new MatOfPoint2f(largestSquare);
         MatOfPoint2f rescaled = new MatOfPoint2f();
         if (largestSquare != null) {
             Core.multiply(largestSquare, new Scalar(SIZE_REDUCTION, SIZE_REDUCTION), largestSquare);
+            Core.add(largestSquare, new Scalar(SIZE_REDUCTION/2, SIZE_REDUCTION/2), largestSquare);
         }
 
         mQuad = largestSquare;

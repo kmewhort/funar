@@ -10,7 +10,9 @@ public interface ImageProcessor {
     Mat process(Image img);
 
     void recallibrate();
-
     boolean isCallibrated();
+    void setAutoCallibrate(boolean enable);
+    boolean getAutoCallibrate();
+
     int requiredInputFormat();
 }

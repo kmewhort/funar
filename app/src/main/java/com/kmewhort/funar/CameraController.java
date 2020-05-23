@@ -120,14 +120,23 @@ public class CameraController extends MainFullscreenActivityBase {
         // Handle item selection
         switch (item.getItemId()) {
             case R.id.callibrate:
+                mCurrentDepthProcessor.recallibrate();
                 return true;
-            case R.id.enable_auto_callibrate:
+            case R.id.toggle_auto_callibrate:
+                if(mCurrentDepthProcessor.getAutoCallibrate()) {
+                    mCurrentDepthProcessor.setAutoCallibrate(false);
+                    item.setTitle(getString(R.string.enable_auto_callibrate));
+                } else {
+                    mCurrentDepthProcessor.setAutoCallibrate(true);
+                    item.setTitle(getString(R.string.disable_auto_callibrate));
+                }
                 return true;
-            case R.id.disable_auto_callibrate:
             default:
                 return super.onOptionsItemSelected(item);
         }
     }
+
+
 
     private final CameraDevice.StateCallback stateCallback = new CameraDevice.StateCallback() {
         @Override

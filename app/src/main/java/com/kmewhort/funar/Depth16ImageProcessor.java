@@ -50,8 +50,18 @@ public class Depth16ImageProcessor implements ImageProcessor {
         return gray16();
     }
 
+    public void recallibrate() {}
+
     public boolean isCallibrated() {
         return true;
+    }
+
+    public void setAutoCallibrate(boolean enable) {
+        // not implemented
+    }
+
+    public boolean getAutoCallibrate() {
+        return false;
     }
 
     public int requiredInputFormat() {
