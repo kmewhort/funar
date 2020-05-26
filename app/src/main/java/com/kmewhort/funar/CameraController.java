@@ -24,7 +24,6 @@ import android.os.HandlerThread;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
-import androidx.appcompat.app.AppCompatActivity;
 
 import android.util.Log;
 import android.util.Size;
@@ -80,8 +79,7 @@ public class CameraController extends MainFullscreenActivityBase {
     private boolean mBitmapConsumed;
     private int mFrameCount;
 
-    private ImageProcessor mCurrentDepthProcessor;
-    private ImageProcessor mCurrentEffectProcessor;
+    private EffectRunner mEffectRunner;
 
 
     @Override
@@ -102,8 +100,7 @@ public class CameraController extends MainFullscreenActivityBase {
 
         mFrameCount = 0;
 
-        //mCurrentDepthProcessor = new Depth16ImageProcessor();
-        mCurrentDepthProcessor = new DepthJpegProjectionAreaProcessor();
+        mEffectRunner = new EffectRunner();
 
         openCamera();
     }
@@ -120,14 +117,14 @@ public class CameraController extends MainFullscreenActivityBase {
         // Handle item selection
         switch (item.getItemId()) {
             case R.id.callibrate:
-                mCurrentDepthProcessor.recallibrate();
+                mEffectRunner.recallibrate();
                 return true;
             case R.id.toggle_auto_callibrate:
-                if(mCurrentDepthProcessor.getAutoCallibrate()) {
-                    mCurrentDepthProcessor.setAutoCallibrate(false);
+                if(mEffectRunner.getAutoCallibrate()) {
+                    mEffectRunner.setAutoCallibrate(false);
                     item.setTitle(getString(R.string.enable_auto_callibrate));
                 } else {
-                    mCurrentDepthProcessor.setAutoCallibrate(true);
+                    mEffectRunner.setAutoCallibrate(true);
                     item.setTitle(getString(R.string.disable_auto_callibrate));
                 }
                 return true;
@@ -136,7 +133,13 @@ public class CameraController extends MainFullscreenActivityBase {
         }
     }
 
+    protected void onLeftSwipe() {
+        mEffectRunner.prevEffectGroup();
+    }
 
+    protected void onRightSwipe() {
+        mEffectRunner.nextEffectGroup();
+    }
 
     private final CameraDevice.StateCallback stateCallback = new CameraDevice.StateCallback() {
         @Override
@@ -197,7 +200,7 @@ public class CameraController extends MainFullscreenActivityBase {
             ImageReader reader = ImageReader.newInstance(
                     imageDimension.getWidth(),
                     imageDimension.getHeight(),
-                    mCurrentDepthProcessor.requiredInputFormat(),
+                    mEffectRunner.requiredInputFormat(),
                     1
             );
 
@@ -260,16 +263,7 @@ public class CameraController extends MainFullscreenActivityBase {
                 if (img == null) // not sure why this happens
                     return;
 
-                Mat depth = mCurrentDepthProcessor.process(img);
-                img.close();
-
-                Mat output;
-                if(!mCurrentDepthProcessor.isCallibrated()) {
-                    output = depth;
-                } else {
-                    output = (new ContourGenerator()).process(depth);
-                }
-                img.close();
+                Mat output = mEffectRunner.process(img);
 
                 // show and re-capture
                 if(output != null) {

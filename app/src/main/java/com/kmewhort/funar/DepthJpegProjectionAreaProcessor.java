@@ -57,6 +57,7 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
     private Bitmap mRgbBitmap;
     private Mat mRgbMat;
     private Mat mDepthMat;
+    private boolean mColorOutput;
 
     private int mProcessingStartTime;
     private int mDepthProjectStartTime;
@@ -81,65 +82,76 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
     public Mat process(Image img) {
         decodeRgbImage(img);
         decodeDepthImage();
+        return process(mDepthMat);
+    }
+
+    public Mat process(Mat mat) {
         if(++mFrameCount % RECALIBRATE_FRAME_COUNT == 0 && mAutoCallibration) {
             recallibrate();
         }
 
-        if(!mVisualCallibration) {
-            // start off flashing a white square
-            // TODO: would be nicer to just border the regular output
-            if(mWhiteFlashCount++ < PROJECTOR_FRAME_LATENCY) {
-                return whiteFlashMat();
-            }
+        if(!isCallibrated()) {
+            if (!mVisualCallibration) {
+                // start off flashing a white square
+                // TODO: would be nicer to just border the regular output
+                if (mWhiteFlashCount++ < PROJECTOR_FRAME_LATENCY) {
+                    return whiteFlashMat();
+                }
 
-            // callibrate if we haven't figured out our projection yet
-            if(mWarpMat == null) {
-                findLargestBrightestQuad();
-                if (mQuad == null)
-                    return whiteFlashMat(); //try again next frame
+                // callibrate if we haven't figured out our projection yet
+                if (mWarpMat == null) {
+                    findLargestBrightestQuad();
+                    if (mQuad == null)
+                        return whiteFlashMat(); //try again next frame
 
-                calculatePerspectiveTransform(mDepthMat.width(), mDepthMat.height());
-            }
-        } else {
-            // timed stages of callibration that we sho on screen
-            if (mProcessingStartTime < 0)
-                mProcessingStartTime = (int) (System.currentTimeMillis());
+                    calculatePerspectiveTransform();
+                }
+            } else {
+                // timed stages of callibration that we sho on screen
+                if (mProcessingStartTime < 0)
+                    mProcessingStartTime = (int) (System.currentTimeMillis());
 
-            // Phase 1: search for the brightest quadrilateral until found AND 5 seconds have past
-            if (mQuad == null || ((int) (System.currentTimeMillis()) - mProcessingStartTime) < 5000) {
-                findLargestBrightestQuad();
-                Mat output = addWhiteBorder(mRgbMat);
-                if(mQuad == null)
-                    return output;
-                else
-                    return highlightedQuad(output);
-            }
+                // Phase 1: search for the brightest quadrilateral until found AND 5 seconds have past
+                if (mQuad == null || ((int) (System.currentTimeMillis()) - mProcessingStartTime) < 5000) {
+                    findLargestBrightestQuad();
+                    Mat output = addWhiteBorder(mRgbMat);
+                    if (mQuad == null)
+                        return output;
+                    else
+                        return highlightedQuad(output);
+                }
 
-            if (mDepthProjectStartTime < 0)
-                mDepthProjectStartTime = (int) (System.currentTimeMillis());
+                if (mDepthProjectStartTime < 0)
+                    mDepthProjectStartTime = (int) (System.currentTimeMillis());
 
-            // Phase 2: show the depth image from depth JPEG, with the quadrilateral shown
-            if ((int) (System.currentTimeMillis()) - mDepthProjectStartTime < 1000) {
-                return highlightedQuad(mDepthMat);
-            }
+                // Phase 2: show the depth image from depth JPEG, with the quadrilateral shown
+                if ((int) (System.currentTimeMillis()) - mDepthProjectStartTime < 1000) {
+                    return highlightedQuad(mDepthMat);
+                }
 
-            // TODO: For faster depth imaging, feature match against the depth image in the Depth16
-            // image and get a transform between the two
+                // TODO: For faster depth imaging, feature match against the depth image in the Depth16
+                // image and get a transform between the two
 
-            // Phase 3: Zoom/warp just the projected screen and show the depth there
-            if (mWarpMat == null) {
-                calculatePerspectiveTransform(mDepthMat.width(), mDepthMat.height());
-                // if this fails (hitting this very sporadically, stemming from a failure
-                // to find the sorted points), back to square 1
-                if(mWarpMat == null) {
-                    recallibrate();
-                    return null;
+                // Phase 3: Zoom/warp just the projected screen and show the depth there
+                if (mWarpMat == null) {
+                    calculatePerspectiveTransform();
+                    // if this fails (hitting this very sporadically, stemming from a failure
+                    // to find the sorted points), back to square 1
+                    if (mWarpMat == null) {
+                        recallibrate();
+                        return null;
+                    }
                 }
             }
         }
 
         Mat warped = new Mat();
-        Imgproc.warpPerspective(mDepthMat, warped, mWarpMat, mDepthMat.size());
+        Mat target = null;
+        if(mColorOutput)
+            target = mRgbMat;
+        else
+            target = mDepthMat;
+        Imgproc.warpPerspective(target, warped, mWarpMat, target.size());
         return warped;
     }
 
@@ -171,6 +183,15 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
 
     public void setVisualCallibrationMode(boolean visual) {
         mVisualCallibration = visual;
+    }
+
+    // whether to output depth or a colour image
+    public void setColorOutput(boolean color) {
+        if(mColorOutput == color)
+            return;
+        mColorOutput = color;
+        if(mWarpMat != null)
+            calculatePerspectiveTransform();
     }
 
     private void decodeRgbImage(Image img) {
@@ -252,9 +273,9 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
             }
         }
 
-        mScaledDownQuad = new MatOfPoint2f(largestSquare);
         MatOfPoint2f rescaled = new MatOfPoint2f();
         if (largestSquare != null) {
+            mScaledDownQuad = new MatOfPoint2f(largestSquare);
             Core.multiply(largestSquare, new Scalar(SIZE_REDUCTION, SIZE_REDUCTION), largestSquare);
             Core.add(largestSquare, new Scalar(SIZE_REDUCTION/2, SIZE_REDUCTION/2), largestSquare);
         }
@@ -332,7 +353,16 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
         return sortedPoints;
     }
 
-    private Mat calculatePerspectiveTransform(int targetWidth, int targetHeight) {
+    private Mat calculatePerspectiveTransform() {
+        int targetWidth, targetHeight;
+        if(mColorOutput) {
+            targetWidth = mRgbMat.width();
+            targetHeight = mRgbMat.height();
+        } else {
+            targetWidth = mDepthMat.width();
+            targetHeight = mDepthMat.height();
+        }
+
         // based on https://stackoverflow.com/questions/40688491/opencv-getperspectivetransform-and-warpperspective-java
         MatOfPoint2f quad2f = scaledQuad(targetWidth, targetHeight);
 

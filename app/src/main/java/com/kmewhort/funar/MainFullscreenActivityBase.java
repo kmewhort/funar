@@ -4,9 +4,11 @@ import android.annotation.SuppressLint;
 
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.view.GestureDetectorCompat;
 
 import android.os.Bundle;
 import android.os.Handler;
+import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -17,6 +19,7 @@ public class MainFullscreenActivityBase extends AppCompatActivity {
     private static final int UI_ANIMATION_DELAY = 300;
     private final Handler mHideHandler = new Handler();
     private View mContentView;
+
     private final Runnable mHidePart2Runnable = new Runnable() {
         @SuppressLint("InlinedApi")
         @Override
@@ -90,7 +93,19 @@ public class MainFullscreenActivityBase extends AppCompatActivity {
         // Upon interacting with UI controls, delay any scheduled hide()
         // operations to prevent the jarring behavior of controls going away
         // while interacting with the UI.
+        // TODO: only needed for additional buttons
         //findViewById(R.id.dummy_button).setOnTouchListener(mDelayHideTouchListener);
+
+        mContentView.setOnTouchListener(new OnSwipeTouchListener(this) {
+            @Override
+            public void onSwipeLeft() {
+                onLeftSwipe();
+            }
+
+            public void onSwipeRight() {
+                onRightSwipe();
+            }
+        });
     }
 
     @Override
@@ -145,4 +160,12 @@ public class MainFullscreenActivityBase extends AppCompatActivity {
         mHideHandler.removeCallbacks(mHideRunnable);
         mHideHandler.postDelayed(mHideRunnable, delayMillis);
     }
+
+    protected void onLeftSwipe() {
+        //virtual
+    }
+    protected void onRightSwipe() {
+        //virtual
+    }
+
 }

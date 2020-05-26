@@ -1,6 +1,7 @@
 package com.kmewhort.funar;
 
 import android.graphics.Bitmap;
+import android.media.Image;
 
 import org.opencv.android.Utils;
 import org.opencv.core.Mat;
@@ -17,14 +18,14 @@ import static org.opencv.core.Core.normalize;
 import static org.opencv.core.CvType.CV_8U;
 import static org.opencv.core.CvType.CV_8UC3;
 
-public class ContourGenerator {
+public class ContourGenerator implements ImageProcessor {
     Mat mMat;
     boolean mNormalize;
 
     ContourGenerator() {
     }
 
-    Mat process(Mat gray3Input) {
+    public Mat process(Mat gray3Input) {
        // convert the 3-channel gray input to gray, normalized
         mMat = new Mat();
         // TODO: use 16 bit?
@@ -33,6 +34,12 @@ public class ContourGenerator {
 
         return contours();
     }
+
+    public Mat process(Image img) {
+        // not supported
+        return null;
+    }
+
 
     protected Mat contours() {
         Mat result = new Mat(mMat.height(), mMat.width(), CV_8UC3);
@@ -53,5 +60,28 @@ public class ContourGenerator {
             Imgproc.drawContours(result, contours, -1, new Scalar(0, 255, 0), 1);
         }
         return result;
+    }
+
+    @Override
+    public void recallibrate() {
+    }
+
+    @Override
+    public boolean isCallibrated() {
+        return true;
+    }
+
+    @Override
+    public void setAutoCallibrate(boolean enable) {
+    }
+
+    @Override
+    public boolean getAutoCallibrate() {
+        return true;
+    }
+
+    @Override
+    public int requiredInputFormat() {
+        return -1;
     }
 }

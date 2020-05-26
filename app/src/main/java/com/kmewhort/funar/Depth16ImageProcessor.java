@@ -42,11 +42,14 @@ public class Depth16ImageProcessor implements ImageProcessor {
         Mat raw = new Mat(img.getHeight(), img.getWidth(), CV_16UC1, buffer);
         img.close();
 
+        return process(raw);
+    }
+
+    public Mat process(Mat mat) {
         // first three bits are the confidence - mask them out
         mMat = new Mat();
-        bitwise_and(raw, (new Mat(1, 1, CV_16UC1, new Scalar(0x1FFF))), mMat);
+        bitwise_and(mat, (new Mat(1, 1, CV_16UC1, new Scalar(0x1FFF))), mMat);
 
-        //return contoursBmp();
         return gray16();
     }
 
