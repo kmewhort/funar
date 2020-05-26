@@ -31,7 +31,7 @@ import static org.opencv.core.CvType.CV_16UC1;
 import static org.opencv.core.CvType.CV_8U;
 import static org.opencv.core.CvType.CV_8UC3;
 
-public class Depth16ImageProcessor implements ImageProcessor {
+public class Depth16ImageProcessor implements ImagePreprocessor {
     Mat mMat;
     boolean mNormalize;
 
@@ -66,6 +66,9 @@ public class Depth16ImageProcessor implements ImageProcessor {
     public boolean getAutoCallibrate() {
         return false;
     }
+
+    public Mat getCallibration() { return null; }
+    public void setCallibration(Mat warpMat) {};
 
     public int requiredInputFormat() {
         return ImageFormat.DEPTH16;

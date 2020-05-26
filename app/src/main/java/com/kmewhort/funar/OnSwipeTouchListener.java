@@ -39,6 +39,11 @@ public class OnSwipeTouchListener implements View.OnTouchListener {
             return true;
         }
 
+        @Override
+        public boolean onSingleTapUp(MotionEvent e) {
+            return onClick();
+        }
+
         // Determines the fling velocity and then fires the appropriate swipe event accordingly
         @Override
         public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
@@ -49,17 +54,17 @@ public class OnSwipeTouchListener implements View.OnTouchListener {
                 if (Math.abs(diffX) > Math.abs(diffY)) {
                     if (Math.abs(diffX) > SWIPE_THRESHOLD && Math.abs(velocityX) > SWIPE_VELOCITY_THRESHOLD) {
                         if (diffX > 0) {
-                            onSwipeRight();
+                            result = onSwipeRight();
                         } else {
-                            onSwipeLeft();
+                            result = onSwipeLeft();
                         }
                     }
                 } else {
                     if (Math.abs(diffY) > SWIPE_THRESHOLD && Math.abs(velocityY) > SWIPE_VELOCITY_THRESHOLD) {
                         if (diffY > 0) {
-                            onSwipeDown();
+                            result = onSwipeDown();
                         } else {
-                            onSwipeUp();
+                            result = onSwipeUp();
                         }
                     }
                 }
@@ -70,15 +75,23 @@ public class OnSwipeTouchListener implements View.OnTouchListener {
         }
     }
 
-    public void onSwipeRight() {
+    public boolean onSwipeRight() {
+        return false;
     }
 
-    public void onSwipeLeft() {
+    public boolean onSwipeLeft() {
+        return false;
     }
 
-    public void onSwipeUp() {
+    public boolean onSwipeUp() {
+        return false;
     }
 
-    public void onSwipeDown() {
+    public boolean onSwipeDown() {
+        return false;
+    }
+
+    public boolean onClick() {
+        return false;
     }
 }

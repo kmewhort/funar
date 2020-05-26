@@ -46,7 +46,7 @@ import static org.opencv.core.CvType.CV_8U;
 import static org.opencv.core.CvType.CV_8UC3;
 import static org.opencv.imgproc.Imgproc.medianBlur;
 
-public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
+public class DepthJpegProjectionAreaProcessor implements ImagePreprocessor {
     private static final int RECALIBRATE_FRAME_COUNT = 20;
     private static final int PROJECTOR_FRAME_LATENCY = 2;
 
@@ -179,6 +179,14 @@ public class DepthJpegProjectionAreaProcessor implements ImageProcessor {
 
     public boolean getAutoCallibrate() {
         return mAutoCallibration;
+    }
+
+    public Mat getCallibration() {
+        return mWarpMat;
+    }
+
+    public void setCallibration(Mat warpMat) {
+        mWarpMat = warpMat;
     }
 
     public void setVisualCallibrationMode(boolean visual) {

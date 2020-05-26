@@ -61,27 +61,4 @@ public class ContourGenerator implements ImageProcessor {
         }
         return result;
     }
-
-    @Override
-    public void recallibrate() {
-    }
-
-    @Override
-    public boolean isCallibrated() {
-        return true;
-    }
-
-    @Override
-    public void setAutoCallibrate(boolean enable) {
-    }
-
-    @Override
-    public boolean getAutoCallibrate() {
-        return true;
-    }
-
-    @Override
-    public int requiredInputFormat() {
-        return -1;
-    }
 }
