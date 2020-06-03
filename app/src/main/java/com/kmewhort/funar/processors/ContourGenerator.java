@@ -1,9 +1,7 @@
-package com.kmewhort.funar;
+package com.kmewhort.funar.processors;
 
-import android.graphics.Bitmap;
 import android.media.Image;
 
-import org.opencv.android.Utils;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfPoint;
 import org.opencv.core.Scalar;
@@ -12,25 +10,36 @@ import org.opencv.imgproc.Imgproc;
 import java.util.ArrayList;
 import java.util.List;
 
-import static android.graphics.Bitmap.Config.ARGB_8888;
-import static org.opencv.core.Core.NORM_MINMAX;
 import static org.opencv.core.Core.normalize;
+import static org.opencv.core.CvType.CV_16UC1;
 import static org.opencv.core.CvType.CV_8U;
 import static org.opencv.core.CvType.CV_8UC3;
 
-public class ContourGenerator implements ImageProcessor {
+public class ContourGenerator extends ImageProcessor {
     Mat mMat;
     boolean mNormalize;
 
-    ContourGenerator() {
+    public ContourGenerator() {
     }
 
-    public Mat process(Mat gray3Input) {
-       // convert the 3-channel gray input to gray, normalized
-        mMat = new Mat();
-        // TODO: use 16 bit?
-        Imgproc.cvtColor(gray3Input, mMat, Imgproc.COLOR_RGB2GRAY);
-        normalize(mMat, mMat, 0, 255, NORM_MINMAX, CV_8U);
+    public Mat process(Mat input) {
+        // convert the 3-channel gray input to gray, normalized
+        if(input.channels() != 1) {
+            // TODO: use 16 bit?
+            mMat = new Mat();
+            Imgproc.cvtColor(input, mMat, Imgproc.COLOR_RGB2GRAY);
+        } else {
+            mMat = input;
+        }
+        if(mMat.type() == CV_16UC1) {
+            // input range is 0 to 8191, but chop off really far away
+            Imgproc.threshold(mMat, mMat, 2047, 8191, Imgproc.THRESH_TRUNC);
+            //Core.add(mMat, new Scalar(-2047), mMat);
+            mMat.convertTo(mMat, CV_8U, 256.0/2047.0);
+            //normalize(mMat, mMat, 0, 255, NORM_MINMAX, CV_8U);
+
+        }
+        //normalize(mMat, mMat, 0, 255, NORM_MINMAX, CV_8U);
 
         return contours();
     }

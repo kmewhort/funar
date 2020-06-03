@@ -2,12 +2,20 @@ package com.kmewhort.funar;
 
 import android.media.Image;
 
+import com.kmewhort.funar.preprocessors.Depth16Processor;
+import com.kmewhort.funar.preprocessors.DepthJpegProcessor;
+import com.kmewhort.funar.preprocessors.ImagePreprocessor;
+import com.kmewhort.funar.preprocessors.ProjectionAreaProcessor;
+import com.kmewhort.funar.processors.ContourGenerator;
+import com.kmewhort.funar.processors.ImageProcessor;
+
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfPoint2f;
 
 import java.util.ArrayList;
 
 // this class runs a group of effects and provides for selecting an effect group
-public class EffectRunner implements ImagePreprocessor {
+public class EffectRunner extends ImagePreprocessor {
     private class EffectGroup {
         EffectGroup(ImagePreprocessor effect) {
             processors = new ArrayList<ImageProcessor>();
@@ -40,7 +48,9 @@ public class EffectRunner implements ImagePreprocessor {
         if(prevIndex <= -1) prevIndex = mAllEffectGroups.size()-1;
         EffectGroup prevGroup = mAllEffectGroups.get(prevIndex);
 
-        prevGroup.getPreprocessor().setCallibration(mCurrentGroup.getPreprocessor().getCallibration());
+        if(mCurrentGroup.getPreprocessor().getCallibration() != null)
+            prevGroup.getPreprocessor().setCallibration(mCurrentGroup.getPreprocessor().getCallibration());
+
         mCurrentGroup = mAllEffectGroups.get(prevIndex);
         return mCurrentGroup;
     }
@@ -51,7 +61,9 @@ public class EffectRunner implements ImagePreprocessor {
         if(nextIndex >= mAllEffectGroups.size()) nextIndex = 0;
         EffectGroup nextGroup = mAllEffectGroups.get(nextIndex);
 
-        nextGroup.getPreprocessor().setCallibration(mCurrentGroup.getPreprocessor().getCallibration());
+        if(mCurrentGroup.getPreprocessor().getCallibration() != null)
+            nextGroup.getPreprocessor().setCallibration(mCurrentGroup.getPreprocessor().getCallibration());
+
         mCurrentGroup = mAllEffectGroups.get(nextIndex);
         return mCurrentGroup;
     }
@@ -59,16 +71,32 @@ public class EffectRunner implements ImagePreprocessor {
     private void initializeProcessors() {
         mAllEffectGroups = new ArrayList<>();
 
-        // Contour: Contour heatmap from a Depth JPEG
+        // Contour: Contour heatmap from a Depth JPEG, just on projected area
+        /*
         mAllEffectGroups.add(new EffectRunner.EffectGroup(
-                new DepthJpegProjectionAreaProcessor(),
+                new ProjectionAreaProcessor(false, false),
                 new ContourGenerator()
         ));
+        */
 
         // Hypercolor: Re-render of the input image
         mAllEffectGroups.add(new EffectRunner.EffectGroup(
-                new DepthJpegProjectionAreaProcessor()
+                new ProjectionAreaProcessor(true, false)
         ));
+
+
+        // Full-collection-area depth JPEG input contour heatmap
+        /*mAllEffectGroups.add(new EffectRunner.EffectGroup(
+                new DepthJpegProcessor(),
+                new ContourGenerator()
+       ));*/
+
+        /*
+        // Full-collection-area depth16 input contour heatmap
+        mAllEffectGroups.add(new EffectRunner.EffectGroup(
+                new Depth16Processor(),
+                new ContourGenerator()
+        ));*/
     }
 
     @Override
@@ -123,12 +151,12 @@ public class EffectRunner implements ImagePreprocessor {
     }
 
     @Override
-    public Mat getCallibration() {
+    public MatOfPoint2f getCallibration() {
         return mCurrentGroup.getPreprocessor().getCallibration();
     }
 
     @Override
-    public void setCallibration(Mat warpMat) {
-        mCurrentGroup.getPreprocessor().setCallibration(warpMat);
+    public void setCallibration(MatOfPoint2f callib) {
+        mCurrentGroup.getPreprocessor().setCallibration(callib);
     }
 }

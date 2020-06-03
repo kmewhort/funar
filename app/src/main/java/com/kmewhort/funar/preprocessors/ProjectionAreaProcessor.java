@@ -1,18 +1,14 @@
-package com.kmewhort.funar;
+package com.kmewhort.funar.preprocessors;
 
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
 import android.media.Image;
 
-import com.adobe.internal.xmp.XMPException;
-import com.adobe.internal.xmp.XMPIterator;
-import com.adobe.internal.xmp.XMPMeta;
-import com.adobe.internal.xmp.properties.XMPPropertyInfo;
-import com.drew.imaging.ImageMetadataReader;
-import com.drew.imaging.ImageProcessingException;
-import com.drew.metadata.Metadata;
-import com.drew.metadata.xmp.XmpDirectory;
+import com.kmewhort.funar.preprocessors.Depth16Processor;
+import com.kmewhort.funar.preprocessors.DepthJpegProcessor;
+import com.kmewhort.funar.preprocessors.ImagePreprocessor;
+import com.kmewhort.funar.preprocessors.RgbJpegProcessor;
+import com.kmewhort.funar.processors.ImageProcessor;
 
 import org.opencv.android.Utils;
 import org.opencv.core.Core;
@@ -26,38 +22,21 @@ import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.imgproc.Moments;
 
-import java.io.BufferedInputStream;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 
-import static android.bluetooth.BluetoothHidDeviceAppQosSettings.MAX;
 import static android.graphics.Bitmap.Config.ARGB_8888;
 import static java.lang.Math.sqrt;
-import static org.opencv.core.Core.NORM_MINMAX;
 import static org.opencv.core.Core.normalize;
 import static org.opencv.core.Core.split;
-import static org.opencv.core.CvType.CV_16UC1;
-import static org.opencv.core.CvType.CV_8U;
 import static org.opencv.core.CvType.CV_8UC3;
-import static org.opencv.imgproc.Imgproc.medianBlur;
 
-public class DepthJpegProjectionAreaProcessor implements ImagePreprocessor {
+public class ProjectionAreaProcessor extends ImagePreprocessor {
     private static final int RECALIBRATE_FRAME_COUNT = 20;
     private static final int PROJECTOR_FRAME_LATENCY = 2;
 
     // downsample scale for finding the quad
     private static final int SIZE_REDUCTION = 2;
-
-    private byte[] mImageData;
-    private Bitmap mRgbBitmap;
-    private Mat mRgbMat;
-    private Mat mDepthMat;
-    private boolean mColorOutput;
 
     private int mProcessingStartTime;
     private int mDepthProjectStartTime;
@@ -73,15 +52,43 @@ public class DepthJpegProjectionAreaProcessor implements ImagePreprocessor {
 
     private int mFrameCount;
 
-    public DepthJpegProjectionAreaProcessor() {
+    private Mat mDepthMat;
+    private Mat mRgbMat;
+
+    boolean mUseDepth16;
+    boolean mColorOutput; // vs depth
+    private ImagePreprocessor mDepthBackend;
+
+    public ProjectionAreaProcessor(boolean outputRgb, boolean useDepth16) {
+        mUseDepth16 = useDepth16;
+        mColorOutput = outputRgb;
+        if(useDepth16)
+            mDepthBackend = new Depth16Processor();
+        else
+            mDepthBackend = new DepthJpegProcessor();
+
         mVisualCallibration = true;
         mAutoCallibration = false;
         recallibrate();
     }
 
     public Mat process(Image img) {
-        decodeRgbImage(img);
-        decodeDepthImage();
+        if (!isCallibrated()) {
+            DepthJpegProcessor depthProcessor = new DepthJpegProcessor();
+            mDepthMat = depthProcessor.process(img);
+            if(mDepthMat == null)
+                return null;
+
+            // for visual callibration, we need the RGB image too
+            if (mVisualCallibration) {
+                mRgbMat = (new RgbJpegProcessor()).process(depthProcessor.getRawImageData());
+            }
+        } else {
+            mDepthMat = mDepthBackend.process(img);
+        }
+
+        if(mDepthMat == null)
+            return null;
         return process(mDepthMat);
     }
 
@@ -99,7 +106,7 @@ public class DepthJpegProjectionAreaProcessor implements ImagePreprocessor {
                 }
 
                 // callibrate if we haven't figured out our projection yet
-                if (mWarpMat == null) {
+                if (mQuad == null) {
                     findLargestBrightestQuad();
                     if (mQuad == null)
                         return whiteFlashMat(); //try again next frame
@@ -111,8 +118,8 @@ public class DepthJpegProjectionAreaProcessor implements ImagePreprocessor {
                 if (mProcessingStartTime < 0)
                     mProcessingStartTime = (int) (System.currentTimeMillis());
 
-                // Phase 1: search for the brightest quadrilateral until found AND 5 seconds have past
-                if (mQuad == null || ((int) (System.currentTimeMillis()) - mProcessingStartTime) < 5000) {
+                // Phase 1: search for the brightest quadrilateral until found AND 6 seconds have past
+                if (mQuad == null || ((int) (System.currentTimeMillis()) - mProcessingStartTime) < 6000) {
                     findLargestBrightestQuad();
                     Mat output = addWhiteBorder(mRgbMat);
                     if (mQuad == null)
@@ -156,11 +163,15 @@ public class DepthJpegProjectionAreaProcessor implements ImagePreprocessor {
     }
 
     public int requiredInputFormat() {
-        return ImageFormat.DEPTH_JPEG;
+        if(!isCallibrated())
+            return ImageFormat.DEPTH_JPEG;
+
+        return mUseDepth16 ? ImageFormat.DEPTH16 : ImageFormat.DEPTH_JPEG;
     }
 
+
     public boolean isCallibrated() {
-        return mWarpMat != null;
+        return mQuad != null && mWarpMat != null;
     }
 
     public void recallibrate() {
@@ -181,12 +192,14 @@ public class DepthJpegProjectionAreaProcessor implements ImagePreprocessor {
         return mAutoCallibration;
     }
 
-    public Mat getCallibration() {
-        return mWarpMat;
+    public MatOfPoint2f getCallibration() {
+        return mScaledDownQuad;
     }
 
-    public void setCallibration(Mat warpMat) {
-        mWarpMat = warpMat;
+    public void setCallibration(MatOfPoint2f quad) {
+        mScaledDownQuad = quad;
+        mQuad = scaleQuadToOutputSize(mScaledDownQuad);
+        mWarpMat = null;
     }
 
     public void setVisualCallibrationMode(boolean visual) {
@@ -200,32 +213,6 @@ public class DepthJpegProjectionAreaProcessor implements ImagePreprocessor {
         mColorOutput = color;
         if(mWarpMat != null)
             calculatePerspectiveTransform();
-    }
-
-    private void decodeRgbImage(Image img) {
-        ByteBuffer buffer = img.getPlanes()[0].getBuffer();
-        mImageData = new byte[buffer.remaining()];
-        buffer.get(mImageData);
-        mRgbBitmap = BitmapFactory.decodeByteArray(mImageData, 0, mImageData.length);
-        img.close();
-
-        // TODO: there may be a way to go straight to Mat through OpenCV decode
-        mRgbMat = new Mat(mRgbBitmap.getHeight(), mRgbBitmap.getWidth(), CvType.CV_8UC3);
-        Utils.bitmapToMat(mRgbBitmap, mRgbMat);
-    }
-
-    private void decodeDepthImage() {
-        try {
-            ByteBuffer depthJpeg = (new JpegParser(mImageData)).getDepthMap();
-            Bitmap bitmap = BitmapFactory.decodeByteArray(depthJpeg.array(), depthJpeg.arrayOffset(), depthJpeg.limit());
-
-            mDepthMat = new Mat(bitmap.getHeight(), bitmap.getWidth(), CvType.CV_8UC3);
-            Utils.bitmapToMat(bitmap, mDepthMat);
-        } catch (JpegParser.JpegMarkerNotFound jpegMarkerNotFound) {
-            jpegMarkerNotFound.printStackTrace();
-        } catch (JpegParser.DepthImageNotFound depthImageNotFound) {
-            depthImageNotFound.printStackTrace();
-        }
     }
 
     private Mat highlightedQuad(Mat baseImage) {
@@ -281,15 +268,19 @@ public class DepthJpegProjectionAreaProcessor implements ImagePreprocessor {
             }
         }
 
-        MatOfPoint2f rescaled = new MatOfPoint2f();
-        if (largestSquare != null) {
-            mScaledDownQuad = new MatOfPoint2f(largestSquare);
-            Core.multiply(largestSquare, new Scalar(SIZE_REDUCTION, SIZE_REDUCTION), largestSquare);
-            Core.add(largestSquare, new Scalar(SIZE_REDUCTION/2, SIZE_REDUCTION/2), largestSquare);
-        }
+        mScaledDownQuad = largestSquare;
+        mQuad = scaleQuadToOutputSize(mScaledDownQuad);
 
-        mQuad = largestSquare;
-        return largestSquare;
+        return mQuad;
+    }
+
+    private MatOfPoint2f scaleQuadToOutputSize(MatOfPoint2f scaledDownQuad) {
+        if(scaledDownQuad == null)
+            return null;
+        MatOfPoint2f quad = new MatOfPoint2f();
+        Core.multiply(scaledDownQuad, new Scalar(SIZE_REDUCTION, SIZE_REDUCTION), quad);
+        Core.add(quad, new Scalar(SIZE_REDUCTION/2, SIZE_REDUCTION/2), quad);
+        return quad;
     }
 
     private List<MatOfPoint2f> findQuadContours(Mat gray8) {
@@ -442,7 +433,7 @@ public class DepthJpegProjectionAreaProcessor implements ImagePreprocessor {
 
         List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
         contours.add(new MatOfPoint(imageCorners));
-        Imgproc.drawContours(input, contours, 0, new Scalar(255, 255, 255), 200);
+        Imgproc.drawContours(input, contours, 0, new Scalar(255, 255, 255), 400);
         return input;
     }
 

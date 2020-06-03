@@ -128,7 +128,7 @@ public class MainFullscreenActivityBase extends AppCompatActivity {
         delayedHide(100);
     }
 
-    private void toggle() {
+    protected void toggle() {
         if (mVisible) {
             hide();
         } else {
@@ -136,7 +136,7 @@ public class MainFullscreenActivityBase extends AppCompatActivity {
         }
     }
 
-    private void hide() {
+    protected void hide() {
         // Hide UI first
         ActionBar actionBar = getSupportActionBar();
         if (actionBar != null) {
@@ -151,7 +151,7 @@ public class MainFullscreenActivityBase extends AppCompatActivity {
     }
 
     @SuppressLint("InlinedApi")
-    private void show() {
+    protected void show() {
         // Show the system bar
         mContentView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                 | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);

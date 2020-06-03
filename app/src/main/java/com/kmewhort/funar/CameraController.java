@@ -80,6 +80,7 @@ public class CameraController extends MainFullscreenActivityBase {
     private int mFrameCount;
 
     private EffectRunner mEffectRunner;
+    private int mCurrentInputFormat;
 
 
     @Override
@@ -117,6 +118,7 @@ public class CameraController extends MainFullscreenActivityBase {
         // Handle item selection
         switch (item.getItemId()) {
             case R.id.callibrate:
+                hide();
                 mEffectRunner.recallibrate();
                 return true;
             case R.id.toggle_auto_callibrate:
@@ -197,10 +199,11 @@ public class CameraController extends MainFullscreenActivityBase {
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
             captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
 
+            mCurrentInputFormat = mEffectRunner.requiredInputFormat();
             ImageReader reader = ImageReader.newInstance(
                     imageDimension.getWidth(),
                     imageDimension.getHeight(),
-                    mEffectRunner.requiredInputFormat(),
+                    mCurrentInputFormat,
                     1
             );
 
@@ -258,6 +261,13 @@ public class CameraController extends MainFullscreenActivityBase {
         return new ImageReader.OnImageAvailableListener() {
             @Override
             public void onImageAvailable(ImageReader reader) {
+                // if our required input format has changed, abandon this frame and restart
+                // the camera capture
+                if(mEffectRunner.requiredInputFormat() != mCurrentInputFormat) {
+                    startCaptureSession();
+                    return;
+                }
+
                 Image img = null;
                 img = reader.acquireLatestImage();
                 if (img == null) // not sure why this happens

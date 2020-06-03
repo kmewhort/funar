@@ -1,4 +1,4 @@
-package com.kmewhort.funar;
+package com.kmewhort.funar.preprocessors;
 
 import com.adobe.internal.xmp.XMPException;
 import com.adobe.internal.xmp.XMPIterator;
