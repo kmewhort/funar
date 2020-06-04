@@ -76,19 +76,23 @@ public class ProjectionAreaProcessor extends ImagePreprocessor {
         if (!isCallibrated()) {
             DepthJpegProcessor depthProcessor = new DepthJpegProcessor();
             mDepthMat = depthProcessor.process(img);
-            if(mDepthMat == null)
-                return null;
+            if(mDepthMat == null) return null;
 
             // for visual callibration, we need the RGB image too
             if (mVisualCallibration) {
                 mRgbMat = (new RgbJpegProcessor()).process(depthProcessor.getRawImageData());
             }
         } else {
-            mDepthMat = mDepthBackend.process(img);
+            if(mColorOutput) {
+                mRgbMat = (new RgbJpegProcessor()).process(img);
+                if(mRgbMat == null) return null;
+            } else {
+                mDepthMat = mDepthBackend.process(img);
+                if(mDepthMat == null) return null;
+            }
+
         }
 
-        if(mDepthMat == null)
-            return null;
         return process(mDepthMat);
     }
 

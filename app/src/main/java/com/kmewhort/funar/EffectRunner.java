@@ -17,22 +17,26 @@ import java.util.ArrayList;
 // this class runs a group of effects and provides for selecting an effect group
 public class EffectRunner extends ImagePreprocessor {
     private class EffectGroup {
-        EffectGroup(ImagePreprocessor effect) {
+        EffectGroup(String name, ImagePreprocessor effect) {
+            mName = name;
             processors = new ArrayList<ImageProcessor>();
             processors.add(effect);
         }
-        EffectGroup(ImagePreprocessor preprocessor, ImageProcessor effect) {
-            this(preprocessor);
+        EffectGroup(String name, ImagePreprocessor preprocessor, ImageProcessor effect) {
+            this(name, preprocessor);
             processors.add(effect);
         }
-        EffectGroup(ImagePreprocessor preprocessor, ImageProcessor effect1, ImageProcessor effect2) {
-            this(preprocessor, effect1);
+        EffectGroup(String name, ImagePreprocessor preprocessor, ImageProcessor effect1, ImageProcessor effect2) {
+            this(name, preprocessor, effect1);
             processors.add(effect2);
         }
         public ImagePreprocessor getPreprocessor() {
             return (ImagePreprocessor)processors.get(0);
         }
+        public String getName() { return mName; };
         public ArrayList<ImageProcessor> processors;
+        private String mName;
+
     }
     private EffectGroup mCurrentGroup;
     private ArrayList<EffectGroup> mAllEffectGroups;
@@ -72,31 +76,38 @@ public class EffectRunner extends ImagePreprocessor {
         mAllEffectGroups = new ArrayList<>();
 
         // Contour: Contour heatmap from a Depth JPEG, just on projected area
-        /*
         mAllEffectGroups.add(new EffectRunner.EffectGroup(
+                "Projection DEPTHJPEG heatmap",
                 new ProjectionAreaProcessor(false, false),
                 new ContourGenerator()
         ));
-        */
+
+        mAllEffectGroups.add(new EffectRunner.EffectGroup(
+                "Projection DEPTH16 heatmap",
+                new ProjectionAreaProcessor(false, false),
+                new ContourGenerator()
+        ));
 
         // Hypercolor: Re-render of the input image
         mAllEffectGroups.add(new EffectRunner.EffectGroup(
+                "Projection mirror",
                 new ProjectionAreaProcessor(true, false)
         ));
 
 
         // Full-collection-area depth JPEG input contour heatmap
-        /*mAllEffectGroups.add(new EffectRunner.EffectGroup(
+        mAllEffectGroups.add(new EffectRunner.EffectGroup(
+                "Full input Depth JPEG",
                 new DepthJpegProcessor(),
                 new ContourGenerator()
-       ));*/
+       ));
 
-        /*
         // Full-collection-area depth16 input contour heatmap
         mAllEffectGroups.add(new EffectRunner.EffectGroup(
+                "Full input DEPTH16",
                 new Depth16Processor(),
                 new ContourGenerator()
-        ));*/
+        ));
     }
 
     @Override
@@ -123,6 +134,10 @@ public class EffectRunner extends ImagePreprocessor {
             if(output == null) return null;
         }
         return output;
+    }
+
+    public String currentEffectName() {
+        return mCurrentGroup.getName();
     }
 
     @Override

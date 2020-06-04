@@ -56,8 +56,8 @@ public class ContourGenerator extends ImageProcessor {
         // start with a colormap
         Imgproc.applyColorMap(mMat, result, Imgproc.COLORMAP_JET);
 
-        // for each spread of 8 between 0 and 256
-        for(int i = 0; i < 32; i++) {
+        // for each spread of 16 between 0 and 256
+        for(int i = 0; i < 16; i++) {
             Mat threshold = new Mat();
             Imgproc.threshold(mMat, threshold, i * 8, (i + 1) * 8, 0);
 

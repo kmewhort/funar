@@ -137,10 +137,13 @@ public class CameraController extends MainFullscreenActivityBase {
 
     protected void onLeftSwipe() {
         mEffectRunner.prevEffectGroup();
+        Toast.makeText(this, mEffectRunner.currentEffectName(), Toast.LENGTH_SHORT).show();
     }
 
     protected void onRightSwipe() {
         mEffectRunner.nextEffectGroup();
+        Toast.makeText(this, mEffectRunner.currentEffectName(), Toast.LENGTH_SHORT).show();
+
     }
 
     private final CameraDevice.StateCallback stateCallback = new CameraDevice.StateCallback() {
