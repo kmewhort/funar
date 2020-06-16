@@ -2,6 +2,7 @@ package com.kmewhort.funar;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.SurfaceTexture;
@@ -87,6 +88,8 @@ public class CameraController extends MainFullscreenActivityBase {
     protected void onCreate(Bundle savedInstanceState) {
         // load OpenCV
         OpenCVLoader.initDebug();
+
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
 
         super.onCreate(savedInstanceState);
 
@@ -201,6 +204,7 @@ public class CameraController extends MainFullscreenActivityBase {
             // request builder to which to add the surfaces we're requesting
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
             captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
+            captureRequestBuilder.set(CaptureRequest.JPEG_ORIENTATION, 90);
 
             mCurrentInputFormat = mEffectRunner.requiredInputFormat();
             ImageReader reader = ImageReader.newInstance(

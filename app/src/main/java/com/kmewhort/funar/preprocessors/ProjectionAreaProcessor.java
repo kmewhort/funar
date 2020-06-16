@@ -38,8 +38,8 @@ public class ProjectionAreaProcessor extends ImagePreprocessor {
     // downsample scale for finding the quad
     private static final int SIZE_REDUCTION = 2;
 
-    private int mProcessingStartTime;
-    private int mDepthProjectStartTime;
+    private long mProcessingStartTime;
+    private long mDepthProjectStartTime;
 
     private MatOfPoint2f mQuad;
     private MatOfPoint2f mScaledDownQuad;
@@ -120,10 +120,10 @@ public class ProjectionAreaProcessor extends ImagePreprocessor {
             } else {
                 // timed stages of callibration that we sho on screen
                 if (mProcessingStartTime < 0)
-                    mProcessingStartTime = (int) (System.currentTimeMillis());
+                    mProcessingStartTime = System.currentTimeMillis();
 
                 // Phase 1: search for the brightest quadrilateral until found AND 6 seconds have past
-                if (mQuad == null || ((int) (System.currentTimeMillis()) - mProcessingStartTime) < 6000) {
+                if (mQuad == null || ((System.currentTimeMillis() - mProcessingStartTime) < 6000)) {
                     findLargestBrightestQuad();
                     Mat output = addWhiteBorder(mRgbMat);
                     if (mQuad == null)
@@ -133,10 +133,10 @@ public class ProjectionAreaProcessor extends ImagePreprocessor {
                 }
 
                 if (mDepthProjectStartTime < 0)
-                    mDepthProjectStartTime = (int) (System.currentTimeMillis());
+                    mDepthProjectStartTime = System.currentTimeMillis();
 
                 // Phase 2: show the depth image from depth JPEG, with the quadrilateral shown
-                if ((int) (System.currentTimeMillis()) - mDepthProjectStartTime < 1000) {
+                if ((System.currentTimeMillis() - mDepthProjectStartTime) < 1000) {
                     return highlightedQuad(mDepthMat);
                 }
 
