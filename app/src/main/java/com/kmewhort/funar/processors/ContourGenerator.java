@@ -23,7 +23,7 @@ public class ContourGenerator extends ImageProcessor {
     }
 
     public Mat process(Mat input) {
-        // convert the 3-channel gray input to gray, normalized
+        // convert the 3-channel gray input to gray
         if(input.channels() != 1) {
             // TODO: use 16 bit?
             mMat = new Mat();
@@ -34,21 +34,11 @@ public class ContourGenerator extends ImageProcessor {
         if(mMat.type() == CV_16UC1) {
             // input range is 0 to 8191, but chop off really far away
             Imgproc.threshold(mMat, mMat, 2047, 8191, Imgproc.THRESH_TRUNC);
-            //Core.add(mMat, new Scalar(-2047), mMat);
             mMat.convertTo(mMat, CV_8U, 256.0/2047.0);
-            //normalize(mMat, mMat, 0, 255, NORM_MINMAX, CV_8U);
-
         }
-        //normalize(mMat, mMat, 0, 255, NORM_MINMAX, CV_8U);
 
         return contours();
     }
-
-    public Mat process(Image img) {
-        // not supported
-        return null;
-    }
-
 
     protected Mat contours() {
         Mat result = new Mat(mMat.height(), mMat.width(), CV_8UC3);
