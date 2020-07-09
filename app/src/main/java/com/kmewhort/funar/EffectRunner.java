@@ -2,7 +2,6 @@ package com.kmewhort.funar;
 
 import android.media.Image;
 
-import com.kmewhort.funar.preprocessors.Depth16Processor;
 import com.kmewhort.funar.preprocessors.DepthJpegProcessor;
 import com.kmewhort.funar.preprocessors.ImagePreprocessor;
 import com.kmewhort.funar.preprocessors.ProjectionAreaProcessor;
@@ -75,38 +74,21 @@ public class EffectRunner extends ImagePreprocessor {
     private void initializeProcessors() {
         mAllEffectGroups = new ArrayList<>();
 
-        // Contour: Contour heatmap from a Depth JPEG, just on projected area
         mAllEffectGroups.add(new EffectRunner.EffectGroup(
-                "Projection DEPTHJPEG heatmap",
-                new ProjectionAreaProcessor(false, false),
+                "Projection area depth heatmap",
+                new ProjectionAreaProcessor(false),
                 new ContourGenerator()
         ));
 
         mAllEffectGroups.add(new EffectRunner.EffectGroup(
-                "Projection DEPTH16 heatmap",
-                new ProjectionAreaProcessor(false, false),
-                new ContourGenerator()
-        ));
-
-        // Hypercolor: Re-render of the input image
-        mAllEffectGroups.add(new EffectRunner.EffectGroup(
-                "Projection mirror",
-                new ProjectionAreaProcessor(true, false)
-        ));
-
-
-        // Full-collection-area depth JPEG input contour heatmap
-        mAllEffectGroups.add(new EffectRunner.EffectGroup(
-                "Full input Depth JPEG",
+                "Full input depth heatmap",
                 new DepthJpegProcessor(),
                 new ContourGenerator()
-       ));
+        ));
 
-        // Full-collection-area depth16 input contour heatmap
         mAllEffectGroups.add(new EffectRunner.EffectGroup(
-                "Full input DEPTH16",
-                new Depth16Processor(),
-                new ContourGenerator()
+                "Projection mirror",
+                new ProjectionAreaProcessor(true)
         ));
     }
 

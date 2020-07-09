@@ -4,12 +4,6 @@ import android.graphics.Bitmap;
 import android.graphics.ImageFormat;
 import android.media.Image;
 
-import com.kmewhort.funar.preprocessors.Depth16Processor;
-import com.kmewhort.funar.preprocessors.DepthJpegProcessor;
-import com.kmewhort.funar.preprocessors.ImagePreprocessor;
-import com.kmewhort.funar.preprocessors.RgbJpegProcessor;
-import com.kmewhort.funar.processors.ImageProcessor;
-
 import org.opencv.android.Utils;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
@@ -59,13 +53,9 @@ public class ProjectionAreaProcessor extends ImagePreprocessor {
     boolean mColorOutput; // vs depth
     private ImagePreprocessor mDepthBackend;
 
-    public ProjectionAreaProcessor(boolean outputRgb, boolean useDepth16) {
-        mUseDepth16 = useDepth16;
+    public ProjectionAreaProcessor(boolean outputRgb) {
         mColorOutput = outputRgb;
-        if(useDepth16)
-            mDepthBackend = new Depth16Processor();
-        else
-            mDepthBackend = new DepthJpegProcessor();
+        mDepthBackend = new DepthJpegProcessor();
 
         mVisualCallibration = true;
         mAutoCallibration = false;
@@ -185,6 +175,7 @@ public class ProjectionAreaProcessor extends ImagePreprocessor {
         mWarpMat = null;
         mWhiteFlashCount = 0;
         mFrameCount = 0;
+        mDepthBackend.recallibrate();
     }
 
     public void setAutoCallibrate(boolean enable) {
