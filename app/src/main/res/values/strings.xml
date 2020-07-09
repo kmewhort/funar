@@ -3,6 +3,16 @@
     <string name="callibrate">Callibrate</string>
     <string name="enable_auto_callibrate">Enable Auto Callibrate</string>
     <string name="disable_auto_callibrate">Disable Auto Callibrate</string>
+    
+    <string name="min_depth_increase_meter">+1m min depth</string>
+    <string name="min_depth_increase_decimeter">   +0.1m min depth</string>
+    <string name="min_depth_decrease_meter">   -1m min depth</string>
+    <string name="min_depth_decrease_decimeter">   -0.1m min depth</string>
+
+    <string name="max_depth_increase_meter">+1m max depth</string>
+    <string name="max_depth_increase_decimeter">   +0.1m max depth</string>
+    <string name="max_depth_decrease_meter">   -1m max depth</string>
+    <string name="max_depth_decrease_decimeter">   -0.1m max depth</string>
 
     <string name="title_activity_temp_fullscreen">TempFullscreenActivity</string>
     <string name="dummy_button">Dummy Button</string>

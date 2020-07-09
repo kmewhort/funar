@@ -75,20 +75,26 @@ public class EffectRunner extends ImagePreprocessor {
         mAllEffectGroups = new ArrayList<>();
 
         mAllEffectGroups.add(new EffectRunner.EffectGroup(
-                "Projection area depth heatmap",
-                new ProjectionAreaProcessor(false),
+                "Projected heatmap with dynamic depth callibration",
+                new ProjectionAreaProcessor(false, false),
+                new ContourGenerator()
+        ));
+
+        mAllEffectGroups.add(new EffectRunner.EffectGroup(
+                "Projected heatmap with static depth callibration",
+                new ProjectionAreaProcessor(false, true),
                 new ContourGenerator()
         ));
 
         mAllEffectGroups.add(new EffectRunner.EffectGroup(
                 "Full input depth heatmap",
-                new DepthJpegProcessor(),
+                new DepthJpegProcessor(false),
                 new ContourGenerator()
         ));
 
         mAllEffectGroups.add(new EffectRunner.EffectGroup(
                 "Projection mirror",
-                new ProjectionAreaProcessor(true)
+                new ProjectionAreaProcessor(true, false)
         ));
     }
 
@@ -155,5 +161,30 @@ public class EffectRunner extends ImagePreprocessor {
     @Override
     public void setCallibration(MatOfPoint2f callib) {
         mCurrentGroup.getPreprocessor().setCallibration(callib);
+    }
+
+    @Override
+    public boolean supportsDepthCallibration() {
+        return mCurrentGroup.getPreprocessor().supportsDepthCallibration();
+    }
+
+    @Override
+    public double getCallibratedMinDepth() {
+        return mCurrentGroup.getPreprocessor().getCallibratedMinDepth();
+    }
+
+    @Override
+    public void setCallibratedMinDepth(double depth) {
+        mCurrentGroup.getPreprocessor().setCallibratedMinDepth(depth);
+    }
+
+    @Override
+    public double getCallibratedMaxDepth() {
+        return mCurrentGroup.getPreprocessor().getCallibratedMaxDepth();
+    }
+
+    @Override
+    public void setCallibratedMaxDepth(double depth) {
+        mCurrentGroup.getPreprocessor().setCallibratedMaxDepth(depth);
     }
 }

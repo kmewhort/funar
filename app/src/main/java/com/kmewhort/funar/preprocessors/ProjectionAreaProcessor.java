@@ -51,11 +51,11 @@ public class ProjectionAreaProcessor extends ImagePreprocessor {
 
     boolean mUseDepth16;
     boolean mColorOutput; // vs depth
-    private ImagePreprocessor mDepthBackend;
+    private DepthJpegProcessor mDepthBackend;
 
-    public ProjectionAreaProcessor(boolean outputRgb) {
+    public ProjectionAreaProcessor(boolean outputRgb, boolean staticDepthCallibration) {
         mColorOutput = outputRgb;
-        mDepthBackend = new DepthJpegProcessor();
+        mDepthBackend = new DepthJpegProcessor(staticDepthCallibration);
 
         mVisualCallibration = true;
         mAutoCallibration = false;
@@ -64,7 +64,7 @@ public class ProjectionAreaProcessor extends ImagePreprocessor {
 
     public Mat process(Image img) {
         if (!isCallibrated()) {
-            DepthJpegProcessor depthProcessor = new DepthJpegProcessor();
+            DepthJpegProcessor depthProcessor = new DepthJpegProcessor(false);
             mDepthMat = depthProcessor.process(img);
             if(mDepthMat == null) return null;
 
@@ -195,6 +195,31 @@ public class ProjectionAreaProcessor extends ImagePreprocessor {
         mScaledDownQuad = quad;
         mQuad = scaleQuadToOutputSize(mScaledDownQuad);
         mWarpMat = null;
+    }
+
+    public boolean supportsDepthCallibration() {
+        return mDepthBackend.staticCallibration();
+    }
+
+
+    @Override
+    public double getCallibratedMinDepth() {
+        return mDepthBackend.getCallibratedMinDepth();
+    }
+
+    @Override
+    public void setCallibratedMinDepth(double depth) {
+        mDepthBackend.setCallibratedMinDepth(depth);
+    }
+
+    @Override
+    public double getCallibratedMaxDepth() {
+        return mDepthBackend.getCallibratedMaxDepth();
+    }
+
+    @Override
+    public void setCallibratedMaxDepth(double depth) {
+        mDepthBackend.setCallibratedMaxDepth(depth);
     }
 
     public void setVisualCallibrationMode(boolean visual) {

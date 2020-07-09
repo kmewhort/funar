@@ -44,4 +44,22 @@ public abstract class ImagePreprocessor extends ImageProcessor {
     public void setCallibration(MatOfPoint2f callib) {
         mCallibration = callib;
     }
+
+    public boolean supportsDepthCallibration() {
+        return false;
+    }
+
+    public double getCallibratedMinDepth() {
+        return 0;
+    }
+
+    public void setCallibratedMinDepth(double depth) {
+    }
+
+    public double getCallibratedMaxDepth() {
+        return 0;
+    }
+
+    public void setCallibratedMaxDepth(double depth) {
+    }
 }

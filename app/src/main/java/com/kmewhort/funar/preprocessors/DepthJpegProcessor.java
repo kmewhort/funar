@@ -30,9 +30,12 @@ public class DepthJpegProcessor extends ImagePreprocessor {
     protected double mFar;
     protected boolean mCallibrated;
     protected int mCallibrationFrameCount;
+    protected boolean mStaticCallibration;
 
-    public DepthJpegProcessor() {
+    public DepthJpegProcessor(boolean staticCalliibration) {
         super();
+
+        mStaticCallibration = staticCalliibration;
         recallibrate();
     }
 
@@ -59,6 +62,30 @@ public class DepthJpegProcessor extends ImagePreprocessor {
         return mImageData;
     }
 
+    public boolean staticCallibration() {
+        return mStaticCallibration;
+    }
+
+    @Override
+    public double getCallibratedMinDepth() {
+        return mNear;
+    }
+
+    @Override
+    public void setCallibratedMinDepth(double depth) {
+        mNear = depth;
+    }
+
+    @Override
+    public double getCallibratedMaxDepth() {
+        return mFar;
+    }
+
+    @Override
+    public void setCallibratedMaxDepth(double depth) {
+       mFar = depth;
+    }
+
     private void decodeDepthImage() {
         try {
             JpegParser parser = new JpegParser(mImageData);
@@ -79,14 +106,18 @@ public class DepthJpegProcessor extends ImagePreprocessor {
                 Core.add(mDepthMat, new Scalar(curFar), mDepthMat);
                 Core.divide(curFar*curNear, mDepthMat, mDepthMat);
 
+                // renormalize either to the current near/far, or the callibrated one
+                double calFar = mStaticCallibration ? mFar : curFar;
+                double calNear = mStaticCallibration ? mNear : curNear;
+
                 // truncate values exceeding the callibrated far
-                Imgproc.threshold(mDepthMat, mDepthMat, mFar, 0, Imgproc.THRESH_TRUNC);
+                Imgproc.threshold(mDepthMat, mDepthMat, calFar, 0, Imgproc.THRESH_TRUNC);
 
                 // re-normalize between 0 and 255, truncating values below the callibrated min
                 // at the same time
-                Core.subtract(mDepthMat, new Scalar(mNear), mDepthMat);
+                Core.subtract(mDepthMat, new Scalar(calNear), mDepthMat);
                 Imgproc.threshold(mDepthMat, mDepthMat, 0, 0, Imgproc.THRESH_TOZERO);
-                Core.multiply(mDepthMat, new Scalar(255.0/(mFar-mNear)), mDepthMat);
+                Core.multiply(mDepthMat, new Scalar(255.0/(calFar-calNear)), mDepthMat);
                 mDepthMat.convertTo(mDepthMat, CvType.CV_8UC1);
             } else {
                 // find the min/max distance over 10 frames

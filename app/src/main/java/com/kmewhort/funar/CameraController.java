@@ -128,13 +128,36 @@ public class CameraController extends MainFullscreenActivityBase {
     }
 
     @Override
+    public boolean onPrepareOptionsMenu(Menu menu) {
+        refreshOptionsMenuDepthItems(menu);
+        return true;
+    }
+
+    protected void refreshOptionsMenuDepthItems(Menu menu) {
+        // update visibility based on whether depth callibration supported
+        boolean visible = mEffectRunner.supportsDepthCallibration();
+        menu.findItem(R.id.min_depth_increase_meter).setVisible(visible);
+        menu.findItem(R.id.min_depth_increase_decimeter).setVisible(visible);
+        menu.findItem(R.id.min_depth_decrease_decimeter).setVisible(visible);
+        menu.findItem(R.id.min_depth_decrease_meter).setVisible(visible);
+        menu.findItem(R.id.max_depth_increase_meter).setVisible(visible);
+        menu.findItem(R.id.max_depth_increase_decimeter).setVisible(visible);
+        menu.findItem(R.id.max_depth_decrease_decimeter).setVisible(visible);
+        menu.findItem(R.id.max_depth_decrease_meter).setVisible(visible);
+
+        // update the labels to show the current depth callibration (TODO: strings)
+        menu.findItem(R.id.min_depth_increase_meter).setTitle("+1m min depth    [" + String.format("%1.1f", mEffectRunner.getCallibratedMinDepth()) + "]");
+        menu.findItem(R.id.max_depth_increase_meter).setTitle("+1m max depth    [" + String.format("%1.1f",mEffectRunner.getCallibratedMaxDepth()) + "]");
+    }
+
+    @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         // Handle item selection
         switch (item.getItemId()) {
             case R.id.callibrate:
                 hide();
                 mEffectRunner.recallibrate();
-                return true;
+                break;
             case R.id.toggle_auto_callibrate:
                 if(mEffectRunner.getAutoCallibrate()) {
                     mEffectRunner.setAutoCallibrate(false);
@@ -143,10 +166,43 @@ public class CameraController extends MainFullscreenActivityBase {
                     mEffectRunner.setAutoCallibrate(true);
                     item.setTitle(getString(R.string.disable_auto_callibrate));
                 }
-                return true;
+                break;
+            case R.id.min_depth_increase_meter:
+                mEffectRunner.setCallibratedMinDepth(mEffectRunner.getCallibratedMinDepth()+1.0);
+                invalidateOptionsMenu();
+                break;
+            case R.id.min_depth_increase_decimeter:
+                mEffectRunner.setCallibratedMinDepth(mEffectRunner.getCallibratedMinDepth()+0.1);
+                invalidateOptionsMenu();
+                break;
+            case R.id.min_depth_decrease_meter:
+                mEffectRunner.setCallibratedMinDepth(mEffectRunner.getCallibratedMinDepth()-1.0);
+                invalidateOptionsMenu();
+                break;
+            case R.id.min_depth_decrease_decimeter:
+                mEffectRunner.setCallibratedMinDepth(mEffectRunner.getCallibratedMinDepth()-0.1);
+                invalidateOptionsMenu();
+                break;
+            case R.id.max_depth_increase_meter:
+                mEffectRunner.setCallibratedMaxDepth(mEffectRunner.getCallibratedMaxDepth()+1.0);
+                invalidateOptionsMenu();
+                break;
+            case R.id.max_depth_increase_decimeter:
+                mEffectRunner.setCallibratedMaxDepth(mEffectRunner.getCallibratedMaxDepth()+0.1);
+                invalidateOptionsMenu();
+                break;
+            case R.id.max_depth_decrease_meter:
+                mEffectRunner.setCallibratedMaxDepth(mEffectRunner.getCallibratedMaxDepth()-1.0);
+                invalidateOptionsMenu();
+                break;
+            case R.id.max_depth_decrease_decimeter:
+                mEffectRunner.setCallibratedMaxDepth(mEffectRunner.getCallibratedMaxDepth()-0.1);
+                invalidateOptionsMenu();
+                break;
             default:
                 return super.onOptionsItemSelected(item);
         }
+        return true;
     }
 
     protected void onLeftSwipe() {

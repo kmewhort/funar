@@ -4,4 +4,22 @@
         android:title="@string/callibrate" />
     <item android:id="@+id/toggle_auto_callibrate"
         android:title="@string/enable_auto_callibrate" />
+
+    <item android:id="@+id/max_depth_increase_meter"
+        android:title="@string/max_depth_increase_meter" />
+    <item android:id="@+id/max_depth_increase_decimeter"
+        android:title="@string/max_depth_increase_decimeter" />
+    <item android:id="@+id/max_depth_decrease_decimeter"
+        android:title="@string/max_depth_decrease_decimeter" />
+    <item android:id="@+id/max_depth_decrease_meter"
+        android:title="@string/max_depth_decrease_meter" />
+
+    <item android:id="@+id/min_depth_increase_meter"
+        android:title="@string/min_depth_increase_meter" />
+    <item android:id="@+id/min_depth_increase_decimeter"
+        android:title="@string/min_depth_increase_decimeter" />
+    <item android:id="@+id/min_depth_decrease_decimeter"
+        android:title="@string/min_depth_decrease_decimeter" />
+    <item android:id="@+id/min_depth_decrease_meter"
+        android:title="@string/min_depth_decrease_meter" />
 </menu>
