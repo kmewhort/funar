@@ -7,21 +7,33 @@ import android.graphics.ImageFormat;
 import android.media.Image;
 
 import org.opencv.android.Utils;
+import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
-import org.opencv.core.MatOfPoint2f;
+import org.opencv.core.Scalar;
+import org.opencv.imgproc.Imgproc;
 
 import java.nio.ByteBuffer;
 
+import static org.opencv.core.Core.divide;
+import static org.opencv.core.Core.extractChannel;
+import static org.opencv.core.Core.multiply;
 import static org.opencv.core.Core.normalize;
+import static org.opencv.core.Core.subtract;
 
 public class DepthJpegProcessor extends ImagePreprocessor {
     protected Bitmap mRgbBitmap;
     protected Mat mDepthMat;
     protected byte[] mImageData;
 
+    protected double mNear; // in meters
+    protected double mFar;
+    protected boolean mCallibrated;
+    protected int mCallibrationFrameCount;
+
     public DepthJpegProcessor() {
         super();
+        recallibrate();
     }
 
     public int requiredInputFormat() {
@@ -49,15 +61,58 @@ public class DepthJpegProcessor extends ImagePreprocessor {
 
     private void decodeDepthImage() {
         try {
-            ByteBuffer depthJpeg = (new JpegParser(mImageData)).getDepthMap();
+            JpegParser parser = new JpegParser(mImageData);
+            ByteBuffer depthJpeg = parser.getDepthMap();
             Bitmap bitmap = BitmapFactory.decodeByteArray(depthJpeg.array(), depthJpeg.arrayOffset(), depthJpeg.limit());
-
             mDepthMat = new Mat(bitmap.getHeight(), bitmap.getWidth(), CvType.CV_8UC3);
             Utils.bitmapToMat(bitmap, mDepthMat);
+            extractChannel(mDepthMat, mDepthMat, 0);
+
+            if(mCallibrated) {
+                mDepthMat.convertTo(mDepthMat, CvType.CV_32FC1);
+                // unwrap the RangeInverse values to meters
+                // (see https://developer.android.com/training/camera2/Dynamic-depth-v1.0.pdf p. 39)
+                // TODO: check values are still 255 based and not already normalized to 1.0
+                double curNear = parser.getDepthNearValue();
+                double curFar = parser.getDepthFarValue();
+                Core.multiply(mDepthMat, new Scalar(-1.0*(curFar-curNear)/255.0), mDepthMat);
+                Core.add(mDepthMat, new Scalar(curFar), mDepthMat);
+                Core.divide(curFar*curNear, mDepthMat, mDepthMat);
+
+                // truncate values exceeding the callibrated far
+                Imgproc.threshold(mDepthMat, mDepthMat, mFar, 0, Imgproc.THRESH_TRUNC);
+
+                // re-normalize between 0 and 255, truncating values below the callibrated min
+                // at the same time
+                Core.subtract(mDepthMat, new Scalar(mNear), mDepthMat);
+                Imgproc.threshold(mDepthMat, mDepthMat, 0, 0, Imgproc.THRESH_TOZERO);
+                Core.multiply(mDepthMat, new Scalar(255.0/(mFar-mNear)), mDepthMat);
+                mDepthMat.convertTo(mDepthMat, CvType.CV_8UC1);
+            } else {
+                // find the min/max distance over 10 frames
+                if(parser.getDepthNearValue() < mNear)
+                    mNear = parser.getDepthNearValue();
+                if(parser.getDepthFarValue() > mFar)
+                    mFar = parser.getDepthFarValue();
+                if(++mCallibrationFrameCount >= 10) {
+                    mCallibrated = true;
+                }
+            }
         } catch (JpegParser.JpegMarkerNotFound jpegMarkerNotFound) {
             jpegMarkerNotFound.printStackTrace();
         } catch (JpegParser.DepthImageNotFound depthImageNotFound) {
             depthImageNotFound.printStackTrace();
         }
+    }
+
+    public void recallibrate() {
+        mNear = 10000;
+        mFar = 0;
+        mCallibrated = false;
+        mCallibrationFrameCount = 0;
+    }
+
+    public boolean isCallibrated() {
+        return mCallibrated;
     }
 }

@@ -1,5 +1,7 @@
 package com.kmewhort.funar.preprocessors;
 
+import android.util.Log;
+
 import com.adobe.internal.xmp.XMPException;
 import com.adobe.internal.xmp.XMPIterator;
 import com.adobe.internal.xmp.XMPMeta;
@@ -43,6 +45,16 @@ public class JpegParser {
         throw new DepthImageNotFound();
     }
 
+    public double getDepthNearValue() {
+        if(!mDepthFormat.equals("RangeInverse")) return 0.0;
+        return mDepthNearValue;
+    }
+
+    public double getDepthFarValue() {
+        if(!mDepthFormat.equals("RangeInverse")) return 0.0;
+        return mDepthFarValue;
+    }
+
     private static final byte JPEG_MARKER = (byte)(Integer.parseInt("ff",16) & 0xff);
     private static final byte JPEG_START = (byte)(Integer.parseInt("d8",16) & 0xff);
     private static final byte JPEG_END = (byte)(Integer.parseInt("d9",16) & 0xff);
@@ -57,6 +69,9 @@ public class JpegParser {
     }
     private ArrayList<Trailer> mTrailers;
 
+    private double mDepthNearValue;
+    private double mDepthFarValue;
+    private String mDepthFormat;
 
     private void parseXmpTrailerMetadata() throws JpegMarkerNotFound {
         mTrailers = new ArrayList<Trailer>();
@@ -72,13 +87,17 @@ public class JpegParser {
                 e.printStackTrace();
             }
 
-            Pattern pattern = Pattern.compile("\\/Container\\:Directory\\[(\\d+)\\]\\/Item\\:(.*)");
+            Pattern trailerItemPattern = Pattern.compile("\\/Container\\:Directory\\[(\\d+)\\]\\/Item\\:(.*)");
+            Pattern depthMapNearPattern = Pattern.compile("\\/DepthMap\\:Near");
+            Pattern depthMapFarPattern = Pattern.compile("\\/DepthMap\\:Far");
+            Pattern depthMapFormatPattern = Pattern.compile("\\/DepthMap\\:Format");
+
             while (iterator.hasNext()) {
                 XMPPropertyInfo xmpPropertyInfo = (XMPPropertyInfo)iterator.next();
                 String path = xmpPropertyInfo.getPath();
                 if(path == null) continue;
 
-                Matcher matcher = pattern.matcher(path);
+                Matcher matcher = trailerItemPattern.matcher(path);
                 if(matcher.find()) {
                     int index = Integer.parseInt(matcher.group(1))-1;
                     String key = matcher.group(2);
@@ -103,8 +122,13 @@ public class JpegParser {
                             t.mime = value;
                             break;
                     }
+                } else if(depthMapNearPattern.matcher(path).find()) {
+                    mDepthNearValue = Double.parseDouble(xmpPropertyInfo.getValue());
+                } else if(depthMapFarPattern.matcher(path).find()) {
+                    mDepthFarValue = Double.parseDouble(xmpPropertyInfo.getValue());
+                } else if(depthMapFormatPattern.matcher(path).find()) {
+                    mDepthFormat = xmpPropertyInfo.getValue();
                 }
-
             }
         }
 

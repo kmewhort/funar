@@ -38,4 +38,5 @@ dependencies {
     implementation project(path: ':openCVLibrary343')
     implementation files('libs/metadata-extractor-2.13.0.jar')
     implementation files('libs/xmpcore-6.0.6.jar')
+    implementation 'com.google.ar:core:1.17.0'
 }

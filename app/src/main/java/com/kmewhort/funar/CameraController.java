@@ -36,6 +36,14 @@ import android.view.Surface;
 import android.widget.ImageView;
 import android.widget.Toast;
 
+import com.google.ar.core.ArCoreApk;
+import com.google.ar.core.Session;
+import com.google.ar.core.exceptions.UnavailableApkTooOldException;
+import com.google.ar.core.exceptions.UnavailableArcoreNotInstalledException;
+import com.google.ar.core.exceptions.UnavailableDeviceNotCompatibleException;
+import com.google.ar.core.exceptions.UnavailableSdkTooOldException;
+import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationException;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -82,6 +90,9 @@ public class CameraController extends MainFullscreenActivityBase {
 
     private EffectRunner mEffectRunner;
     private int mCurrentInputFormat;
+
+    private boolean mUserRequestedArCoreInstall = true;
+    private Session mArCoreSession;
 
 
     @Override
@@ -338,11 +349,13 @@ public class CameraController extends MainFullscreenActivityBase {
             StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
             assert map != null;
             imageDimension = map.getOutputSizes(SurfaceTexture.class)[0];
+
             // Add permission for camera and let user grant the permission
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(CameraController.this, new String[]{Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_CAMERA_PERMISSION);
                 return;
             }
+
             manager.openCamera(cameraId, stateCallback, null);
         } catch (CameraAccessException e) {
             e.printStackTrace();
@@ -378,6 +391,27 @@ public class CameraController extends MainFullscreenActivityBase {
     protected void onResume() {
         super.onResume();
         Log.e(TAG, "onResume");
+
+        // Make sure Google Play Services for AR is installed and up to date.
+        try {
+            if (mArCoreSession == null) {
+                switch (ArCoreApk.getInstance().requestInstall(this, mUserRequestedArCoreInstall)) {
+                    case INSTALLED:
+                        // Success, create the AR session.
+                        mArCoreSession = new Session(this);
+                        break;
+                    case INSTALL_REQUESTED:
+                        // Ensures next invocation of requestInstall() will either return
+                        // INSTALLED or throw an exception.
+                        mUserRequestedArCoreInstall = false;
+                        return;
+                }
+            }
+        } catch (UnavailableUserDeclinedInstallationException | UnavailableDeviceNotCompatibleException | UnavailableArcoreNotInstalledException | UnavailableApkTooOldException | UnavailableSdkTooOldException e) {
+            e.printStackTrace();
+            return;
+        }
+
         startBackgroundThread();
         openCamera();
     }
