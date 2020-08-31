@@ -198,7 +198,7 @@ public class ProjectionAreaProcessor extends ImagePreprocessor {
     }
 
     public boolean supportsDepthCallibration() {
-        return mDepthBackend.staticCallibration();
+        return mDepthBackend.supportsDepthCallibration();
     }
 
 

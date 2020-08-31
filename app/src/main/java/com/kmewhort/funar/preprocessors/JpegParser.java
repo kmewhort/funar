@@ -21,6 +21,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class JpegParser {
+    private static final String TAG = "JpegParser";
+
     public class JpegMarkerNotFound extends Exception {
         public JpegMarkerNotFound(String errorMessage) {
             super(errorMessage);
@@ -96,6 +98,8 @@ public class JpegParser {
                 XMPPropertyInfo xmpPropertyInfo = (XMPPropertyInfo)iterator.next();
                 String path = xmpPropertyInfo.getPath();
                 if(path == null) continue;
+
+                Log.e(TAG, path + ":" + xmpPropertyInfo.getValue());
 
                 Matcher matcher = trailerItemPattern.matcher(path);
                 if(matcher.find()) {

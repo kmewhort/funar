@@ -87,8 +87,14 @@ public class EffectRunner extends ImagePreprocessor {
         ));
 
         mAllEffectGroups.add(new EffectRunner.EffectGroup(
-                "Full input depth heatmap",
+                "Full input depth heatmap with dynamic depth callibration",
                 new DepthJpegProcessor(false),
+                new ContourGenerator()
+        ));
+
+        mAllEffectGroups.add(new EffectRunner.EffectGroup(
+                "Full input depth heatmap with static depth callibration",
+                new DepthJpegProcessor(true),
                 new ContourGenerator()
         ));
 

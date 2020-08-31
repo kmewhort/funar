@@ -207,11 +207,13 @@ public class CameraController extends MainFullscreenActivityBase {
 
     protected void onLeftSwipe() {
         mEffectRunner.prevEffectGroup();
+        invalidateOptionsMenu();
         Toast.makeText(this, mEffectRunner.currentEffectName(), Toast.LENGTH_SHORT).show();
     }
 
     protected void onRightSwipe() {
         mEffectRunner.nextEffectGroup();
+        invalidateOptionsMenu();
         Toast.makeText(this, mEffectRunner.currentEffectName(), Toast.LENGTH_SHORT).show();
 
     }

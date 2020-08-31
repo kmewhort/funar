@@ -62,7 +62,8 @@ public class DepthJpegProcessor extends ImagePreprocessor {
         return mImageData;
     }
 
-    public boolean staticCallibration() {
+    @Override
+    public boolean supportsDepthCallibration() {
         return mStaticCallibration;
     }
 
